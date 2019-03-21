@@ -6,6 +6,8 @@ import java.util.Map;
 import javax.ws.rs.QueryParam;
 
 /**
+ * Model which contains information about query parameter
+ *
  * @author David Kral
  */
 class QueryParamModel extends ParamModel<Map<String, Object[]>> {
@@ -15,10 +17,6 @@ class QueryParamModel extends ParamModel<Map<String, Object[]>> {
     QueryParamModel(Builder builder) {
         super(builder);
         queryParamName = builder.queryParamName();
-    }
-
-    public String getQueryParamName() {
-        return queryParamName;
     }
 
     @Override

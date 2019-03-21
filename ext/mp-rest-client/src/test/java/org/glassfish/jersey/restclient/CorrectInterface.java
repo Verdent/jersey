@@ -1,4 +1,4 @@
-package org.glassfish.jersey.restclient.validation;
+package org.glassfish.jersey.restclient;
 
 import javax.ws.rs.BeanParam;
 import javax.ws.rs.GET;

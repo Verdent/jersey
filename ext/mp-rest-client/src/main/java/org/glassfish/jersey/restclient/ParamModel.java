@@ -2,7 +2,6 @@ package org.glassfish.jersey.restclient;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
-import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 
 import javax.ws.rs.BeanParam;
@@ -14,49 +13,17 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.QueryParam;
 
 /**
- * Created by David Kral.
+ * Abstract model for all method parameters.
+ *
+ * @author David Kral
  */
-public abstract class ParamModel<T> {
+abstract class ParamModel<T> {
 
     final InterfaceModel interfaceModel;
     private final Type type;
     private final AnnotatedElement annotatedElement;
     private final int paramPosition;
     private final boolean entity;
-    private final boolean methodParam;
-
-    ParamModel(Builder builder) {
-        this.interfaceModel = builder.interfaceModel;
-        this.type = builder.type;
-        this.annotatedElement = builder.annotatedElement;
-        this.entity = builder.entity;
-        this.paramPosition = builder.paramPosition;
-        this.methodParam = builder.methodParam;
-    }
-
-    Type getType() {
-        return type;
-    }
-
-    AnnotatedElement getAnnotatedElement() {
-        return annotatedElement;
-    }
-
-    int getParamPosition() {
-        return paramPosition;
-    }
-
-    boolean isEntity() {
-        return entity;
-    }
-
-    public boolean isMethodParam() {
-        return methodParam;
-    }
-
-    public abstract T handleParameter(T requestPart, Class<?> annotationClass, Object instance);
-
-    public abstract boolean handles(Class<Annotation> annotation);
 
     static ParamModel from(InterfaceModel classModel, Type type, AnnotatedElement annotatedElement, int position) {
         return new Builder(classModel, type, annotatedElement)
@@ -71,6 +38,63 @@ public abstract class ParamModel<T> {
                 .build();
     }
 
+    ParamModel(Builder builder) {
+        this.interfaceModel = builder.interfaceModel;
+        this.type = builder.type;
+        this.annotatedElement = builder.annotatedElement;
+        this.entity = builder.entity;
+        this.paramPosition = builder.paramPosition;
+    }
+
+    /**
+     * Returns {@link Type} of the parameter.
+     *
+     * @return parameter type
+     */
+    Type getType() {
+        return type;
+    }
+
+    /**
+     * Returns annotated element.
+     *
+     * @return annotated element
+     */
+    AnnotatedElement getAnnotatedElement() {
+        return annotatedElement;
+    }
+
+    int getParamPosition() {
+        return paramPosition;
+    }
+
+    /**
+     * Returns value if parameter is entity or not.
+     *
+     * @return if parameter is entity
+     */
+    boolean isEntity() {
+        return entity;
+    }
+
+    /**
+     * Transforms parameter to be part of the request.
+     *
+     * @param requestPart part of a request
+     * @param annotationClass annotation type
+     * @param instance actual method parameter value
+     * @return updated request part
+     */
+    abstract T handleParameter(T requestPart, Class<?> annotationClass, Object instance);
+
+    /**
+     * Evaluates if the annotation passed in parameter is supported by this parameter.
+     *
+     * @param annotation checked annotation
+     * @return if annotation is supported
+     */
+    abstract boolean handles(Class<Annotation> annotation);
+
     protected static class Builder implements io.helidon.common.Builder<ParamModel> {
 
         private InterfaceModel interfaceModel;
@@ -84,14 +108,12 @@ public abstract class ParamModel<T> {
         private String formParamName;
         private boolean beanParam;
         private boolean entity;
-        private boolean methodParam;
         private int paramPosition;
 
         private Builder(InterfaceModel interfaceModel, Type type, AnnotatedElement annotatedElement) {
             this.interfaceModel = interfaceModel;
             this.type = type;
             this.annotatedElement = annotatedElement;
-            this.methodParam = annotatedElement instanceof Parameter;
         }
 
         /**

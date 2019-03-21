@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2019 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Public License v. 2.0, which is available at
+ * http://www.eclipse.org/legal/epl-2.0.
+ *
+ * This Source Code may also be made available under the following Secondary
+ * Licenses when the conditions for such availability set forth in the
+ * Eclipse Public License v. 2.0 are satisfied: GNU General Public License,
+ * version 2 with the GNU Classpath Exception, which is available at
+ * https://www.gnu.org/software/classpath/license.html.
+ *
+ * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+ */
+
 package org.glassfish.jersey.restclient;
 
 import java.lang.annotation.Annotation;
@@ -29,7 +45,12 @@ import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 
 /**
- * Created by David Kral.
+ * Handles proper rest client injection.
+ *
+ * Contains information about the rest client interface and extracts additional parameters from
+ * config.
+ *
+ * @author David Kral
  */
 class RestClientProducer implements Bean<Object>, PassivationCapable {
 
@@ -42,9 +63,17 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
     private final RestClientExtension.MpRestClientQualifier qualifier;
     private final BeanManager beanManager;
     private final Class<?> interfaceType;
+    private final Class<? extends Annotation> scope;
     private final Config config;
     private final String baseUrl;
 
+    /**
+     * Creates new instance of RestClientProducer.
+     *
+     * @param qualifier qualifier which defines rest client interface
+     * @param interfaceType rest client interface
+     * @param beanManager bean manager
+     */
     RestClientProducer(RestClientExtension.MpRestClientQualifier qualifier,
                        Class<?> interfaceType,
                        BeanManager beanManager) {
@@ -53,10 +82,7 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
         this.beanManager = beanManager;
         this.config = ConfigProvider.getConfig();
         this.baseUrl = getBaseUrl(interfaceType);
-        /*if (baseUrl.isEmpty()) {
-            throw new DeploymentException("No base uri/url set! It has to be set by config or via @RegisterRestClient
-            annotation");
-        }*/
+        this.scope = resolveProperClientScope();
     }
 
     private String getBaseUrl(Class<?> interfaceType) {
@@ -95,7 +121,6 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
                     .ifPresent(aLong -> restClientBuilder.connectTimeout(aLong, TimeUnit.MILLISECONDS));
             config.getOptionalValue(interfaceType.getName() + CONFIG_READ_TIMEOUT, Long.class)
                     .ifPresent(aLong -> restClientBuilder.readTimeout(aLong, TimeUnit.MILLISECONDS));
-            //TODO zmenit
             return restClientBuilder.build(interfaceType);
         } catch (MalformedURLException e) {
             throw new IllegalStateException("URL is not in valid format: " + baseUrl);
@@ -121,8 +146,7 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
 
     @Override
     public Class<? extends Annotation> getScope() {
-        //TODO change
-        return resolveScope();
+        return scope;
     }
 
     @Override
@@ -135,7 +159,6 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
 
     @Override
     public Set<Class<? extends Annotation>> getStereotypes() {
-        //TODO co jsou stereotypes
         return CollectionsHelper.setOf();
     }
 
@@ -144,8 +167,18 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
         return false;
     }
 
-    //TODO upravit
-    private Class<? extends Annotation> resolveScope() {
+    @Override
+    public String toString() {
+        return "RestClientProducer [ interfaceType: " + interfaceType.getSimpleName()
+                + " ] with Qualifiers [" + getQualifiers() + "]";
+    }
+
+    @Override
+    public String getId() {
+        return interfaceType.getName();
+    }
+
+    private Class<? extends Annotation> resolveProperClientScope() {
         String configScope = config.getOptionalValue(interfaceType.getName() + CONFIG_SCOPE, String.class).orElse(null);
 
         if (configScope != null) {
@@ -167,16 +200,5 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
         } else {
             throw new IllegalArgumentException("Ambiguous scope definition on " + interfaceType + ": " + possibleScopes);
         }
-    }
-
-    @Override
-    public String toString() {
-        return "RestClientProducer [ interfaceType: " + interfaceType.getSimpleName()
-                + " ] with Qualifiers [" + getQualifiers() + "]";
-    }
-
-    @Override
-    public String getId() {
-        return interfaceType.getName();
     }
 }

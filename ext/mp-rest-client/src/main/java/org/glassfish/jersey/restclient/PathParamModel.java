@@ -6,6 +6,8 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.client.WebTarget;
 
 /**
+ * Contains information about method parameter or class field which is annotated by {@link PathParam}.
+ *
  * @author David Kral
  */
 class PathParamModel extends ParamModel<WebTarget> {

@@ -8,6 +8,8 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.client.WebTarget;
 
 /**
+ * Contains information to method parameter which is annotated by {@link MatrixParam}.
+ *
  * @author David Kral
  */
 class MatrixParamModel extends ParamModel<WebTarget> {
@@ -17,10 +19,6 @@ class MatrixParamModel extends ParamModel<WebTarget> {
     MatrixParamModel(Builder builder) {
         super(builder);
         matrixParamName = builder.matrixParamName();
-    }
-
-    String getMatrixParamName() {
-        return matrixParamName;
     }
 
     @Override

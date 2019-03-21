@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2019 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Public License v. 2.0, which is available at
+ * http://www.eclipse.org/legal/epl-2.0.
+ *
+ * This Source Code may also be made available under the following Secondary
+ * Licenses when the conditions for such availability set forth in the
+ * Eclipse Public License v. 2.0 are satisfied: GNU General Public License,
+ * version 2 with the GNU Classpath Exception, which is available at
+ * https://www.gnu.org/software/classpath/license.html.
+ *
+ * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+ */
+
 package org.glassfish.jersey.restclient;
 
 import java.lang.annotation.Annotation;
@@ -5,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import javax.ws.rs.BeanParam;
 import javax.ws.rs.CookieParam;
 import javax.ws.rs.FormParam;
 import javax.ws.rs.HeaderParam;
@@ -16,6 +33,8 @@ import javax.ws.rs.core.Form;
 import javax.ws.rs.core.MultivaluedMap;
 
 /**
+ * Contains information about method parameter or class field which is annotated by {@link BeanParam}.
+ *
  * @author David Kral
  */
 class BeanParamModel extends ParamModel<Object> {
@@ -55,6 +74,12 @@ class BeanParamModel extends ParamModel<Object> {
                 || FormParam.class.equals(annotation);
     }
 
+    /**
+     * Returns {@link List} of all parameters annotated by searched annotation.
+     *
+     * @param paramAnnotation searched annotation
+     * @return filtered list
+     */
     List<ParamModel> getAllParamsWithType(Class<? extends Annotation> paramAnnotation) {
         return beanClassModel.getParameterModels().stream()
                 .filter(paramModel -> paramModel.handles(paramAnnotation))

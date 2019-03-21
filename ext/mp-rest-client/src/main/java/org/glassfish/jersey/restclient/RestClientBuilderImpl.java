@@ -4,22 +4,23 @@ import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
-import javax.inject.Inject;
-import javax.inject.Provider;
 import javax.ws.rs.Priorities;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Configuration;
-import javax.ws.rs.core.GenericType;
-import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.ext.ParamConverterProvider;
 
 import org.eclipse.microprofile.config.Config;
@@ -27,16 +28,16 @@ import org.eclipse.microprofile.config.ConfigProvider;
 import org.eclipse.microprofile.rest.client.RestClientBuilder;
 import org.eclipse.microprofile.rest.client.RestClientDefinitionException;
 import org.eclipse.microprofile.rest.client.annotation.RegisterProvider;
+import org.eclipse.microprofile.rest.client.ext.AsyncInvocationInterceptor;
+import org.eclipse.microprofile.rest.client.ext.AsyncInvocationInterceptorFactory;
 import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
 import org.eclipse.microprofile.rest.client.spi.RestClientListener;
 import org.glassfish.jersey.client.JerseyClientBuilder;
-import org.glassfish.jersey.internal.inject.AbstractBinder;
-import org.glassfish.jersey.internal.inject.ReferencingFactory;
-import org.glassfish.jersey.internal.util.collection.Ref;
-import org.glassfish.jersey.process.internal.RequestScoped;
 
 /**
- * Created by David Kral.
+ * Rest client builder implementation. Creates proxy instance of requested interface.
+ *
+ * @author David Kral
  */
 public class RestClientBuilderImpl implements RestClientBuilder {
 
@@ -44,17 +45,23 @@ public class RestClientBuilderImpl implements RestClientBuilder {
     private static final String CONFIG_PROVIDERS = "/mp-rest/providers";
     private static final String PROVIDER_SEPARATOR = ",";
 
-    private URI uri;
-    private JerseyClientBuilder jerseyClientBuilder;
     private final Set<ResponseExceptionMapper> responseExceptionMappers;
     private final Set<ParamConverterProvider> paramConverterProviders;
+    private final List<AsyncInvocationInterceptorFactory> asyncInterceptorFactories;
     private final Config config;
+    private final ConfigWrapper configWrapper;
+    private URI uri;
+    private JerseyClientBuilder jerseyClientBuilder;
+    private ExecutorService executorService;
 
-    public RestClientBuilderImpl() {
+    RestClientBuilderImpl() {
         jerseyClientBuilder = new JerseyClientBuilder();
         responseExceptionMappers = new HashSet<>();
         paramConverterProviders = new HashSet<>();
+        asyncInterceptorFactories = new ArrayList<>();
         config = ConfigProvider.getConfig();
+        configWrapper = new ConfigWrapper(jerseyClientBuilder.getConfiguration());
+        executorService = Executors.newCachedThreadPool(); //TODO upravit?? - ClientProperties.ASYNC_THREADPOOL_SIZE
     }
 
     @Override
@@ -84,21 +91,21 @@ public class RestClientBuilderImpl implements RestClientBuilder {
         if (executor == null) {
             throw new IllegalArgumentException("ExecutorService cannot be null.");
         }
+        executorService = executor;
         jerseyClientBuilder.executorService(executor);
         return this;
     }
 
     @Override
-    public <T> T build(Class<T> clazz) throws IllegalStateException, RestClientDefinitionException {
-
-        RestClientModel restClientModel = RestClientModel.from(clazz);
+    public <T> T build(Class<T> interfaceClass) throws IllegalStateException, RestClientDefinitionException {
 
         if (uri == null) {
             throw new IllegalStateException("Base uri/url cannot be null!");
         }
 
         //Provider registration part
-        Object providersFromJerseyConfig = jerseyClientBuilder.getConfiguration().getProperty(clazz.getName() + CONFIG_PROVIDERS);
+        Object providersFromJerseyConfig = jerseyClientBuilder.getConfiguration()
+                .getProperty(interfaceClass.getName() + CONFIG_PROVIDERS);
         if (providersFromJerseyConfig instanceof String && !((String) providersFromJerseyConfig).isEmpty()) {
             String[] providerArray = ((String) providersFromJerseyConfig).split(PROVIDER_SEPARATOR);
             for (String provider : providerArray) {
@@ -110,7 +117,7 @@ public class RestClientBuilderImpl implements RestClientBuilder {
                 }
             }
         }
-        Optional<String> providersFromConfig = config.getOptionalValue(clazz.getName() + CONFIG_PROVIDERS, String.class);
+        Optional<String> providersFromConfig = config.getOptionalValue(interfaceClass.getName() + CONFIG_PROVIDERS, String.class);
         if (providersFromConfig.isPresent() && !providersFromConfig.get().isEmpty()) {
             String[] providerArray = providersFromConfig.get().split(PROVIDER_SEPARATOR);
             for (String provider : providerArray) {
@@ -122,13 +129,13 @@ public class RestClientBuilderImpl implements RestClientBuilder {
                 }
             }
         }
-        RegisterProvider[] registerProviders = clazz.getAnnotationsByType(RegisterProvider.class);
+        RegisterProvider[] registerProviders = interfaceClass.getAnnotationsByType(RegisterProvider.class);
         for (RegisterProvider registerProvider : registerProviders) {
             register(registerProvider.value(), registerProvider.priority() < 0 ? Priorities.USER : registerProvider.priority());
         }
 
         for (RestClientListener restClientListener : ServiceLoader.load(RestClientListener.class)) {
-            restClientListener.onNewClient(clazz, this);
+            restClientListener.onNewClient(interfaceClass, this);
         }
 
         //We need to check first if default exception mapper was not disabled by property on builder.
@@ -143,40 +150,30 @@ public class RestClientBuilderImpl implements RestClientBuilder {
             }
         }
 
-        //Support for HttpHeaders injection
-        register(ClientHeaderFilter.class, 1);
-        //register(TestFilter.class, 2);
-        register(new AbstractBinder() {
-            @Override
-            protected void configure() {
-                bindFactory(HeadersRefFactory.class)
-                        .to(HttpHeaders.class)
-                        .proxy(true)
-                        .proxyForSameScope(false)
-                        .in(RequestScoped.class);
 
-                bindFactory(ReferencingFactory.<HttpHeaders>referenceFactory())
-                        .to(new GenericType<Ref<HttpHeaders>>() {
-                        })
-                        .in(RequestScoped.class);
-            }
-        });
+        RestClientModel restClientModel = RestClientModel.from(interfaceClass,
+                                                               responseExceptionMappers,
+                                                               paramConverterProviders,
+                                                               asyncInterceptorFactories);
+        //AsyncInterceptors initialization
+        List<AsyncInvocationInterceptor> asyncInterceptors = asyncInterceptorFactories.stream()
+                .map(AsyncInvocationInterceptorFactory::newInterceptor)
+                .collect(Collectors.toList());
+        asyncInterceptors.forEach(AsyncInvocationInterceptor::prepareContext);
+        executorService(new ExecutorServiceWrapper(executorService,
+                                                   asyncInterceptors));
 
         Client client = jerseyClientBuilder.build();
         WebTarget webTarget = client.target(this.uri);
-
-        restClientModel.getClassModel().getResponseExceptionMappers().addAll(responseExceptionMappers);
-        restClientModel.getClassModel().getParamConverterProviders().addAll(paramConverterProviders);
-
-        return (T) Proxy.newProxyInstance(clazz.getClassLoader(),
-                new Class[]{clazz},
-                new ProxyInvocationHandler(webTarget, restClientModel)
+        return (T) Proxy.newProxyInstance(interfaceClass.getClassLoader(),
+                                          new Class[] {interfaceClass},
+                                          new ProxyInvocationHandler(webTarget, restClientModel)
         );
     }
 
     @Override
     public Configuration getConfiguration() {
-        return jerseyClientBuilder.getConfiguration();
+        return configWrapper;
     }
 
     @Override
@@ -187,29 +184,41 @@ public class RestClientBuilderImpl implements RestClientBuilder {
 
     @Override
     public RestClientBuilder register(Class<?> aClass) {
-        registerCustomClassProvider(aClass);
-        jerseyClientBuilder.register(aClass);
+        if (isSupportedCustomProvider(aClass)) {
+            register(ReflectionUtil.createInstance(aClass));
+        } else {
+            jerseyClientBuilder.register(aClass);
+        }
         return this;
     }
 
     @Override
     public RestClientBuilder register(Class<?> aClass, int i) {
-        registerCustomClassProvider(aClass);
-        jerseyClientBuilder.register(aClass, i);
+        if (isSupportedCustomProvider(aClass)) {
+            register(ReflectionUtil.createInstance(aClass), i);
+        } else {
+            jerseyClientBuilder.register(aClass, i);
+        }
         return this;
     }
 
     @Override
     public RestClientBuilder register(Class<?> aClass, Class<?>... classes) {
-        registerCustomClassProvider(aClass);
-        jerseyClientBuilder.register(aClass, classes);
+        if (isSupportedCustomProvider(aClass)) {
+            register(ReflectionUtil.createInstance(aClass), classes);
+        } else {
+            jerseyClientBuilder.register(aClass, classes);
+        }
         return this;
     }
 
     @Override
     public RestClientBuilder register(Class<?> aClass, Map<Class<?>, Integer> map) {
-        registerCustomClassProvider(aClass);
-        jerseyClientBuilder.register(aClass, map);
+        if (isSupportedCustomProvider(aClass)) {
+            register(ReflectionUtil.createInstance(aClass), map);
+        } else {
+            jerseyClientBuilder.register(aClass, new HashMap<>(map));
+        }
         return this;
     }
 
@@ -217,60 +226,68 @@ public class RestClientBuilderImpl implements RestClientBuilder {
     public RestClientBuilder register(Object o) {
         if (o instanceof ResponseExceptionMapper) {
             ResponseExceptionMapper mapper = (ResponseExceptionMapper) o;
+            registerCustomProvider(o, -1);
             jerseyClientBuilder.register(mapper, mapper.getPriority());
-            registerCustomProvider(o);
         } else {
             jerseyClientBuilder.register(o);
+            registerCustomProvider(o, -1);
         }
         return this;
     }
 
     @Override
     public RestClientBuilder register(Object o, int i) {
-        if (o instanceof ResponseExceptionMapper) {
-            ResponseExceptionMapper mapper = (ResponseExceptionMapper) o;
-            jerseyClientBuilder.register(mapper, mapper.getPriority());
-            registerCustomProvider(o);
-        } else {
-            jerseyClientBuilder.register(o, i);
-        }
+        jerseyClientBuilder.register(o, i);
+        registerCustomProvider(o, i);
         return this;
     }
 
     @Override
     public RestClientBuilder register(Object o, Class<?>... classes) {
-        registerCustomProvider(o);
+        for (Class<?> clazz : classes) {
+            if (isSupportedCustomProvider(clazz)) {
+                register(o);
+            }
+        }
         jerseyClientBuilder.register(o, classes);
         return this;
     }
 
     @Override
     public RestClientBuilder register(Object o, Map<Class<?>, Integer> map) {
-        registerCustomProvider(o);
-        jerseyClientBuilder.register(o, map);
+        if (isSupportedCustomProvider(o.getClass())) {
+            if (o instanceof ResponseExceptionMapper) {
+                registerCustomProvider(o, map.get(ResponseExceptionMapper.class));
+            } else if (o instanceof ParamConverterProvider) {
+                registerCustomProvider(o, map.get(ParamConverterProvider.class));
+            }
+        }
+        jerseyClientBuilder.register(o, new HashMap<>(map));
         return this;
     }
 
-    private void registerCustomClassProvider(Class<?> providerClass) {
-        if (ResponseExceptionMapper.class.isAssignableFrom(providerClass)
-                || ParamConverterProvider.class.isAssignableFrom(providerClass)) {
-            registerCustomProvider(ReflectionUtil.createInstance(providerClass));
-        }
+    private boolean isSupportedCustomProvider(Class<?> providerClass) {
+        return ResponseExceptionMapper.class.isAssignableFrom(providerClass)
+                || ParamConverterProvider.class.isAssignableFrom(providerClass)
+                || AsyncInvocationInterceptorFactory.class.isAssignableFrom(providerClass);
     }
 
-    private void registerCustomProvider(Object instance) {
+    private void registerCustomProvider(Object instance, int priority) {
+        if (!isSupportedCustomProvider(instance.getClass())) {
+            return;
+        }
         if (instance instanceof ResponseExceptionMapper) {
             responseExceptionMappers.add((ResponseExceptionMapper) instance);
-        } else if (instance instanceof ParamConverterProvider) {
+            //needs to be registered separately due to it is not possible to register custom provider in jersey
+            Map<Class<?>, Integer> contracts = new HashMap<>();
+            contracts.put(ResponseExceptionMapper.class, priority);
+            configWrapper.addCustomProvider(instance.getClass(), contracts);
+        }
+        if (instance instanceof ParamConverterProvider) {
             paramConverterProviders.add((ParamConverterProvider) instance);
         }
-    }
-
-    private static class HeadersRefFactory extends ReferencingFactory<HttpHeaders> {
-
-        @Inject
-        HeadersRefFactory(Provider<Ref<HttpHeaders>> referenceFactory) {
-            super(referenceFactory);
+        if (instance instanceof AsyncInvocationInterceptorFactory) {
+            asyncInterceptorFactories.add((AsyncInvocationInterceptorFactory) instance);
         }
     }
 

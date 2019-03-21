@@ -1,5 +1,6 @@
 package org.glassfish.jersey.restclient;
 
+import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -11,21 +12,27 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
+import javax.enterprise.inject.spi.BeanManager;
+import javax.enterprise.inject.spi.CDI;
+import javax.enterprise.inject.spi.InterceptionType;
+import javax.enterprise.inject.spi.Interceptor;
 import javax.json.JsonValue;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.CookieParam;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
 import javax.ws.rs.HeaderParam;
+import javax.ws.rs.MatrixParam;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
@@ -47,6 +54,7 @@ import io.helidon.common.CollectionsHelper;
 
 import org.eclipse.microprofile.rest.client.RestClientDefinitionException;
 import org.eclipse.microprofile.rest.client.annotation.ClientHeaderParam;
+import org.eclipse.microprofile.rest.client.ext.AsyncInvocationInterceptorFactory;
 import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
 
 /**
@@ -58,6 +66,7 @@ class MethodModel {
 
     private final InterfaceModel interfaceModel;
 
+    private final Method method;
     private final Class<?> returnType;
     private final String httpMethod;
     private final String path;
@@ -65,10 +74,24 @@ class MethodModel {
     private final String[] consumes;
     private final List<ParamModel> parameterModels;
     private final List<ClientHeaderParamModel> clientHeaders;
+    private final List<InterceptorInvocationContext.InvocationInterceptor> invocationInterceptors;
     private final RestClientModel subResourceModel;
 
+    static MethodModel from(InterfaceModel classModel, Method method) {
+        return new Builder(classModel, method)
+                .returnType(method.getGenericReturnType())
+                .httpMethod(parseHttpMethod(classModel, method))
+                .pathValue(method.getAnnotation(Path.class))
+                .produces(method.getAnnotation(Produces.class))
+                .consumes(method.getAnnotation(Consumes.class))
+                .parameters(parameterModels(classModel, method))
+                .clientHeaders(method.getAnnotationsByType(ClientHeaderParam.class))
+                .build();
+    }
+
     private MethodModel(Builder builder) {
-        this.interfaceModel = builder.classModel;
+        this.method = builder.method;
+        this.interfaceModel = builder.interfaceModel;
         this.returnType = builder.returnType;
         this.httpMethod = builder.httpMethod;
         this.path = builder.pathValue;
@@ -76,17 +99,36 @@ class MethodModel {
         this.consumes = builder.consumes;
         this.parameterModels = builder.parameterModels;
         this.clientHeaders = builder.clientHeaders;
+        this.invocationInterceptors = builder.invocationInterceptors;
         if (httpMethod.isEmpty()) {
-            subResourceModel = RestClientModel.from(returnType);
-            InterfaceModel subResourceClassModel = subResourceModel.getClassModel();
-            subResourceClassModel.getResponseExceptionMappers().addAll(interfaceModel.getResponseExceptionMappers());
-            subResourceClassModel.getParamConverterProviders().addAll(interfaceModel.getParamConverterProviders());
+            subResourceModel = RestClientModel.from(returnType,
+                                                    interfaceModel.getResponseExceptionMappers(),
+                                                    interfaceModel.getParamConverterProviders(),
+                                                    interfaceModel.getInterceptorFactories());
         } else {
             subResourceModel = null;
         }
     }
 
-    @SuppressWarnings("unchecked") //I am checking the type of parameter and I know it should handle instance I am sending
+    /**
+     * Returns all registered cdi interceptors to this method.
+     *
+     * @return registered interceptors
+     */
+    List<InterceptorInvocationContext.InvocationInterceptor> getInvocationInterceptors() {
+        return invocationInterceptors;
+    }
+
+    /**
+     * Invokes corresponding method according to
+     *
+     * @param classLevelTarget
+     * @param method
+     * @param args
+     * @return
+     */
+    @SuppressWarnings("unchecked")
+    //I am checking the type of parameter and I know it should handle instance I am sending
     Object invokeMethod(WebTarget classLevelTarget, Method method, Object[] args) {
         WebTarget methodLevelTarget = classLevelTarget.path(path);
 
@@ -113,6 +155,7 @@ class MethodModel {
             return subResourceProxy(webTarget, returnType);
         }
         webTarget = addQueryParams(webTarget, args);
+        webTarget = addMatrixParams(webTarget, args);
 
         Invocation.Builder builder = webTarget
                 .request(produces)
@@ -151,7 +194,7 @@ class MethodModel {
         return response.readEntity(returnType);
     }
 
-    private Future asynchronousCall(Invocation.Builder builder, Object entity, Method method) {
+    private CompletableFuture asynchronousCall(Invocation.Builder builder, Object entity, Method method) {
         ParameterizedType type = (ParameterizedType) method.getGenericReturnType();
         Type actualTypeArgument = type.getActualTypeArguments()[0]; //completionStage<actualTypeArgument>
         CompletableFuture<Object> result = new CompletableFuture<>();
@@ -196,6 +239,7 @@ class MethodModel {
         );
     }
 
+    @SuppressWarnings("unchecked") //I am checking the type of parameter and I know it should handle instance I am sending
     private WebTarget addQueryParams(WebTarget webTarget, Object[] args) {
         Map<String, Object[]> queryParams = new HashMap<>();
         WebTarget toReturn = webTarget;
@@ -209,6 +253,18 @@ class MethodModel {
             toReturn = toReturn.queryParam(entry.getKey(), entry.getValue());
         }
         return toReturn;
+    }
+
+    @SuppressWarnings("unchecked") //I am checking the type of parameter and I know it should handle instance I am sending
+    private WebTarget addMatrixParams(WebTarget webTarget, Object[] args) {
+        AtomicReference<WebTarget> toReturn = new AtomicReference<>(webTarget);
+        parameterModels.stream()
+                .filter(parameterModel -> parameterModel.handles(MatrixParam.class))
+                .forEach(parameterModel -> toReturn
+                        .set((WebTarget) parameterModel.handleParameter(toReturn.get(),
+                                                                        MatrixParam.class,
+                                                                        args[parameterModel.getParamPosition()])));
+        return toReturn.get();
     }
 
     @SuppressWarnings("unchecked") //I am checking the type of parameter and I know it should handle instance I am sending
@@ -330,7 +386,7 @@ class MethodModel {
         return CollectionsHelper.listOf(s);
     }
 
-    private void evaluateResponse(Response response, Method method) {
+    void evaluateResponse(Response response, Method method) {
         ResponseExceptionMapper lowestMapper = null;
         Throwable throwable = null;
         for (ResponseExceptionMapper responseExceptionMapper : interfaceModel.getResponseExceptionMappers()) {
@@ -360,18 +416,6 @@ class MethodModel {
         }
     }
 
-    static MethodModel from(InterfaceModel classModel, Method method) {
-        return new Builder(classModel, method)
-                .returnType(method.getGenericReturnType())
-                .httpMethod(parseHttpMethod(classModel, method))
-                .pathValue(method.getAnnotation(Path.class))
-                .produces(method.getAnnotation(Produces.class))
-                .consumes(method.getAnnotation(Consumes.class))
-                .parameters(parameterModels(classModel, method))
-                .clientHeaders(method.getAnnotationsByType(ClientHeaderParam.class))
-                .build();
-    }
-
     private static String parseHttpMethod(InterfaceModel classModel, Method method) {
         List<Class<?>> httpAnnotations = InterfaceUtil.getHttpAnnotations(method);
         if (httpAnnotations.size() > 1) {
@@ -396,7 +440,7 @@ class MethodModel {
 
     private static class Builder implements io.helidon.common.Builder<MethodModel> {
 
-        private final InterfaceModel classModel;
+        private final InterfaceModel interfaceModel;
         private final Method method;
 
         private Class<?> returnType;
@@ -406,10 +450,46 @@ class MethodModel {
         private String[] consumes;
         private List<ParamModel> parameterModels;
         private List<ClientHeaderParamModel> clientHeaders;
+        private List<InterceptorInvocationContext.InvocationInterceptor> invocationInterceptors;
 
-        private Builder(InterfaceModel classModel, Method method) {
-            this.classModel = classModel;
+        private Builder(InterfaceModel interfaceModel, Method method) {
+            this.interfaceModel = interfaceModel;
             this.method = method;
+            filterAllInterceptorAnnotations();
+        }
+
+        private void filterAllInterceptorAnnotations() {
+            invocationInterceptors = new ArrayList<>();
+            try {
+                if (CDI.current() != null) {
+                    Set<Annotation> interceptorAnnotations = new HashSet<>();
+                    BeanManager beanManager = CDI.current().getBeanManager();
+                    for (Annotation annotation : method.getAnnotations()) {
+                        if (beanManager.isInterceptorBinding(annotation.annotationType())) {
+                            interceptorAnnotations.add(annotation);
+                        }
+                    }
+                    interceptorAnnotations.addAll(interfaceModel.getInterceptorAnnotations());
+                    Annotation[] allInterceptorAnnotations = interceptorAnnotations.toArray(new Annotation[0]);
+                    if (allInterceptorAnnotations.length == 0) {
+                        return;
+                    }
+                    List<Interceptor<?>> interceptors = beanManager.resolveInterceptors(InterceptionType.AROUND_INVOKE,
+                                                                                        allInterceptorAnnotations);
+                    if (!interceptors.isEmpty()) {
+                        for (Interceptor<?> interceptor : interceptors) {
+                            Object interceptorInstance = beanManager.getReference(interceptor,
+                                                                                  interceptor.getBeanClass(),
+                                                                                  interfaceModel.getCreationalContext());
+                            invocationInterceptors.add(new InterceptorInvocationContext.
+                                    InvocationInterceptor(interceptorInstance,
+                                                          interceptor));
+                        }
+                    }
+                }
+            } catch (IllegalStateException ignored) {
+                //CDI not present. Ignore.
+            }
         }
 
         /**
@@ -459,7 +539,7 @@ class MethodModel {
          * @return updated Builder instance
          */
         Builder produces(Produces produces) {
-            this.produces = produces == null ? classModel.getProduces() : produces.value();
+            this.produces = produces == null ? interfaceModel.getProduces() : produces.value();
             return this;
         }
 
@@ -471,7 +551,7 @@ class MethodModel {
          * @return updated Builder instance
          */
         Builder consumes(Consumes consumes) {
-            this.consumes = consumes == null ? classModel.getConsumes() : consumes.value();
+            this.consumes = consumes == null ? interfaceModel.getConsumes() : consumes.value();
             return this;
         }
 
@@ -494,7 +574,7 @@ class MethodModel {
          */
         Builder clientHeaders(ClientHeaderParam[] clientHeaderParams) {
             clientHeaders = Arrays.stream(clientHeaderParams)
-                    .map(clientHeaderParam -> new ClientHeaderParamModel(classModel.getRestClientClass(), clientHeaderParam))
+                    .map(clientHeaderParam -> new ClientHeaderParamModel(interfaceModel.getRestClientClass(), clientHeaderParam))
                     .collect(Collectors.toList());
             return this;
         }
@@ -517,14 +597,14 @@ class MethodModel {
         }
 
         private void validateParameters() {
-            UriBuilder uriBuilder = UriBuilder.fromUri(classModel.getPath()).path(pathValue);
+            UriBuilder uriBuilder = UriBuilder.fromUri(interfaceModel.getPath()).path(pathValue);
             List<String> parameters = InterfaceUtil.parseParameters(uriBuilder.toTemplate());
             List<String> methodPathParameters = new ArrayList<>();
             List<ParamModel> pathHandlingParams = parameterModels.stream()
                     .filter(parameterModel -> parameterModel.handles(PathParam.class))
                     .collect(Collectors.toList());
             for (ParamModel paramModel : pathHandlingParams) {
-                if (paramModel instanceof  PathParamModel) {
+                if (paramModel instanceof PathParamModel) {
                     methodPathParameters.add(((PathParamModel) paramModel).getPathParamName());
                 } else if (paramModel instanceof BeanParamModel) {
                     for (ParamModel beanPathParams : ((BeanParamModel) paramModel).getAllParamsWithType(PathParam.class)) {
@@ -535,7 +615,7 @@ class MethodModel {
             for (String parameterName : methodPathParameters) {
                 if (!parameters.contains(parameterName)) {
                     throw new RestClientDefinitionException("Parameter name " + parameterName + " on "
-                                                                    + classModel.getRestClientClass().getName()
+                                                                    + interfaceModel.getRestClientClass().getName()
                                                                     + "::" + method.getName()
                                                                     + " doesn't match any @Path variable name.");
                 }
@@ -543,7 +623,8 @@ class MethodModel {
             }
             if (!parameters.isEmpty()) {
                 throw new RestClientDefinitionException("Some variable names does not have matching @PathParam "
-                                                                + "defined on method " + classModel.getRestClientClass().getName()
+                                                                + "defined on method " + interfaceModel.getRestClientClass()
+                        .getName()
                                                                 + "::" + method.getName());
             }
             List<ParamModel> entities = parameterModels.stream()
@@ -551,7 +632,7 @@ class MethodModel {
                     .collect(Collectors.toList());
             if (entities.size() > 1) {
                 throw new RestClientDefinitionException("You cant have more than 1 entity method parameter! Check "
-                                                                + classModel.getRestClientClass().getName()
+                                                                + interfaceModel.getRestClientClass().getName()
                                                                 + "::" + method.getName());
             }
         }
@@ -562,7 +643,7 @@ class MethodModel {
                 String headerName = clientHeaderParamModel.getHeaderName();
                 if (names.contains(headerName)) {
                     throw new RestClientDefinitionException("Header name cannot be registered more then once on the same target."
-                                                                    + "See " + classModel.getRestClientClass().getName());
+                                                                    + "See " + interfaceModel.getRestClientClass().getName());
                 }
                 names.add(headerName);
             }

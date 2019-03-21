@@ -1,13 +1,34 @@
+/*
+ * Copyright (c) 2019 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Public License v. 2.0, which is available at
+ * http://www.eclipse.org/legal/epl-2.0.
+ *
+ * This Source Code may also be made available under the following Secondary
+ * Licenses when the conditions for such availability set forth in the
+ * Eclipse Public License v. 2.0 are satisfied: GNU General Public License,
+ * version 2 with the GNU Classpath Exception, which is available at
+ * https://www.gnu.org/software/classpath/license.html.
+ *
+ * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+ */
+
 package org.glassfish.jersey.restclient;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
+import javax.enterprise.context.spi.CreationalContext;
+import javax.enterprise.inject.spi.BeanManager;
+import javax.enterprise.inject.spi.CDI;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
@@ -18,11 +39,14 @@ import javax.ws.rs.ext.ParamConverterProvider;
 import org.eclipse.microprofile.rest.client.RestClientDefinitionException;
 import org.eclipse.microprofile.rest.client.annotation.ClientHeaderParam;
 import org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
+import org.eclipse.microprofile.rest.client.ext.AsyncInvocationInterceptorFactory;
 import org.eclipse.microprofile.rest.client.ext.ClientHeadersFactory;
 import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
 
 /**
- * Created by David Kral.
+ * Model of interface and its annotation.
+ *
+ * @author David Kral
  */
 class InterfaceModel {
 
@@ -31,10 +55,29 @@ class InterfaceModel {
     private final String[] consumes;
     private final String path;
     private final ClientHeadersFactory clientHeadersFactory;
+    private final CreationalContext<?> creationalContext;
 
     private final List<ClientHeaderParamModel> clientHeaders;
-    private final List<ResponseExceptionMapper> responseExceptionMappers;
-    private final List<ParamConverterProvider> paramConverterProviders;
+    private final List<AsyncInvocationInterceptorFactory> interceptorFactories;
+    private final Set<ResponseExceptionMapper> responseExceptionMappers;
+    private final Set<ParamConverterProvider> paramConverterProviders;
+    private final Set<Annotation> interceptorAnnotations;
+
+    static InterfaceModel from(Class<?> restClientClass,
+                               Set<ResponseExceptionMapper> responseExceptionMappers,
+                               Set<ParamConverterProvider> paramConverterProviders,
+                               List<AsyncInvocationInterceptorFactory> interceptorFactories) {
+        return new Builder(restClientClass,
+                           responseExceptionMappers,
+                           paramConverterProviders,
+                           interceptorFactories)
+                .pathValue(restClientClass.getAnnotation(Path.class))
+                .produces(restClientClass.getAnnotation(Produces.class))
+                .consumes(restClientClass.getAnnotation(Consumes.class))
+                .clientHeaders(restClientClass.getAnnotationsByType(ClientHeaderParam.class))
+                .clientHeadersFactory(restClientClass.getAnnotation(RegisterClientHeaders.class))
+                .build();
+    }
 
     private InterfaceModel(Builder builder) {
         this.restClientClass = builder.restClientClass;
@@ -43,40 +86,85 @@ class InterfaceModel {
         this.consumes = builder.consumes;
         this.clientHeaders = builder.clientHeaders;
         this.clientHeadersFactory = builder.clientHeadersFactory;
-        this.responseExceptionMappers = new ArrayList<>();
-        this.paramConverterProviders = new ArrayList<>();
+        this.responseExceptionMappers = builder.responseExceptionMappers;
+        this.paramConverterProviders = builder.paramConverterProviders;
+        this.interceptorAnnotations = builder.interceptorAnnotations;
+        this.creationalContext = builder.creationalContext;
+        this.interceptorFactories = builder.interceptorFactories;
     }
 
+    /**
+     * Returns rest client interface class.
+     *
+     * @return interface class
+     */
     Class<?> getRestClientClass() {
         return restClientClass;
     }
 
+    /**
+     * Returns defined produces media types.
+     *
+     * @return produces
+     */
     String[] getProduces() {
         return produces;
     }
 
+    /**
+     * Returns defined consumes media types.
+     *
+     * @return consumes
+     */
     String[] getConsumes() {
         return consumes;
     }
 
+    /**
+     * Returns path value defined on interface level.
+     *
+     * @return path value
+     */
     String getPath() {
         return path;
     }
 
+    /**
+     * Returns registered instance of {@link ClientHeadersFactory}.
+     *
+     * @return registered factory
+     */
     Optional<ClientHeadersFactory> getClientHeadersFactory() {
         return Optional.ofNullable(clientHeadersFactory);
     }
 
+    /**
+     * Returns {@link List} of processed annotation {@link ClientHeaderParam} to {@link ClientHeaderParamModel}
+     *
+     * @return registered factory
+     */
     List<ClientHeaderParamModel> getClientHeaders() {
         return clientHeaders;
     }
 
-    List<ResponseExceptionMapper> getResponseExceptionMappers() {
+    List<AsyncInvocationInterceptorFactory> getInterceptorFactories() {
+        return interceptorFactories;
+    }
+
+    Set<ResponseExceptionMapper> getResponseExceptionMappers() {
         return responseExceptionMappers;
     }
 
-    List<ParamConverterProvider> getParamConverterProviders() {
+    Set<ParamConverterProvider> getParamConverterProviders() {
         return paramConverterProviders;
+    }
+
+    Set<Annotation> getInterceptorAnnotations() {
+        return interceptorAnnotations;
+    }
+
+    CreationalContext<?> getCreationalContext() {
+        return creationalContext;
     }
 
     Object resolveParamValue(Object arg, Type type, Annotation[] annotations) {
@@ -90,16 +178,6 @@ class InterfaceModel {
         return arg;
     }
 
-    static InterfaceModel from(Class<?> restClientClass) {
-        return new Builder(restClientClass)
-                .pathValue(restClientClass.getAnnotation(Path.class))
-                .produces(restClientClass.getAnnotation(Produces.class))
-                .consumes(restClientClass.getAnnotation(Consumes.class))
-                .clientHeaders(restClientClass.getAnnotationsByType(ClientHeaderParam.class))
-                .clientHeadersFactory(restClientClass.getAnnotation(RegisterClientHeaders.class))
-                .build();
-    }
-
     private static class Builder implements io.helidon.common.Builder<InterfaceModel> {
 
         private final Class<?> restClientClass;
@@ -108,10 +186,40 @@ class InterfaceModel {
         private String[] produces;
         private String[] consumes;
         private ClientHeadersFactory clientHeadersFactory;
+        private CreationalContext<?> creationalContext;
         private List<ClientHeaderParamModel> clientHeaders;
+        private List<AsyncInvocationInterceptorFactory> interceptorFactories;
+        private Set<ResponseExceptionMapper> responseExceptionMappers;
+        private Set<ParamConverterProvider> paramConverterProviders;
+        private Set<Annotation> interceptorAnnotations;
 
-        private Builder(Class<?> restClientClass) {
+        private Builder(Class<?> restClientClass,
+                        Set<ResponseExceptionMapper> responseExceptionMappers,
+                        Set<ParamConverterProvider> paramConverterProviders,
+                        List<AsyncInvocationInterceptorFactory> interceptorFactories) {
             this.restClientClass = restClientClass;
+            this.responseExceptionMappers = responseExceptionMappers;
+            this.paramConverterProviders = paramConverterProviders;
+            this.interceptorFactories = interceptorFactories;
+            filterAllInterceptorAnnotations();
+        }
+
+        private void filterAllInterceptorAnnotations() {
+            creationalContext = null;
+            interceptorAnnotations = new HashSet<>();
+            try {
+                if (CDI.current() != null) {
+                    BeanManager beanManager = CDI.current().getBeanManager();
+                    creationalContext = beanManager.createCreationalContext(null);
+                    for (Annotation annotation : restClientClass.getAnnotations()) {
+                        if (beanManager.isInterceptorBinding(annotation.annotationType())) {
+                            interceptorAnnotations.add(annotation);
+                        }
+                    }
+                }
+            } catch (IllegalStateException ignored) {
+                //CDI not present. Ignore.
+            }
         }
 
         /**
