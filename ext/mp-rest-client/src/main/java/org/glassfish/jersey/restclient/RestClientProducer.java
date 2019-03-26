@@ -180,7 +180,6 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
 
     private Class<? extends Annotation> resolveProperClientScope() {
         String configScope = config.getOptionalValue(interfaceType.getName() + CONFIG_SCOPE, String.class).orElse(null);
-
         if (configScope != null) {
             try {
                 return (Class<? extends Annotation>) Class.forName(configScope);
@@ -193,12 +192,13 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
                 .filter(annotation -> beanManager.isScope(annotation.annotationType()))
                 .collect(Collectors.toList());
 
-        if (possibleScopes.isEmpty()) {
-            return Dependent.class;
-        } else if (possibleScopes.size() == 1) {
+        if (possibleScopes.size() == 1) {
             return possibleScopes.get(0).annotationType();
+        } else if (possibleScopes.isEmpty()) {
+            return Dependent.class;
         } else {
-            throw new IllegalArgumentException("Ambiguous scope definition on " + interfaceType + ": " + possibleScopes);
+            throw new IllegalArgumentException("Client should have only one scope defined: " +
+                                                       interfaceType + " has " + possibleScopes);
         }
     }
 }

@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2019 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Public License v. 2.0, which is available at
+ * http://www.eclipse.org/legal/epl-2.0.
+ *
+ * This Source Code may also be made available under the following Secondary
+ * Licenses when the conditions for such availability set forth in the
+ * Eclipse Public License v. 2.0 are satisfied: GNU General Public License,
+ * version 2 with the GNU Classpath Exception, which is available at
+ * https://www.gnu.org/software/classpath/license.html.
+ *
+ * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+ */
+
 package org.glassfish.jersey.restclient;
 
 import java.lang.annotation.Annotation;
@@ -54,11 +70,12 @@ import io.helidon.common.CollectionsHelper;
 
 import org.eclipse.microprofile.rest.client.RestClientDefinitionException;
 import org.eclipse.microprofile.rest.client.annotation.ClientHeaderParam;
-import org.eclipse.microprofile.rest.client.ext.AsyncInvocationInterceptorFactory;
 import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
 
 /**
- * Created by David Kral.
+ * Method model contains all information about method defined in rest client interface.
+ *
+ * @author David Kral
  */
 class MethodModel {
 
@@ -77,14 +94,21 @@ class MethodModel {
     private final List<InterceptorInvocationContext.InvocationInterceptor> invocationInterceptors;
     private final RestClientModel subResourceModel;
 
-    static MethodModel from(InterfaceModel classModel, Method method) {
-        return new Builder(classModel, method)
+    /**
+     * Processes interface method and creates new instance of the model.
+     *
+     * @param interfaceModel
+     * @param method
+     * @return
+     */
+    static MethodModel from(InterfaceModel interfaceModel, Method method) {
+        return new Builder(interfaceModel, method)
                 .returnType(method.getGenericReturnType())
-                .httpMethod(parseHttpMethod(classModel, method))
+                .httpMethod(parseHttpMethod(interfaceModel, method))
                 .pathValue(method.getAnnotation(Path.class))
                 .produces(method.getAnnotation(Produces.class))
                 .consumes(method.getAnnotation(Consumes.class))
-                .parameters(parameterModels(classModel, method))
+                .parameters(parameterModels(interfaceModel, method))
                 .clientHeaders(method.getAnnotationsByType(ClientHeaderParam.class))
                 .build();
     }
@@ -386,6 +410,12 @@ class MethodModel {
         return CollectionsHelper.listOf(s);
     }
 
+    /**
+     * Evaluation of {@link Response} if it is applicable for any of the registered {@link ResponseExceptionMapper} providers.
+     *
+     * @param response obtained response
+     * @param method called method
+     */
     void evaluateResponse(Response response, Method method) {
         ResponseExceptionMapper lowestMapper = null;
         Throwable throwable = null;

@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2019 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Public License v. 2.0, which is available at
+ * http://www.eclipse.org/legal/epl-2.0.
+ *
+ * This Source Code may also be made available under the following Secondary
+ * Licenses when the conditions for such availability set forth in the
+ * Eclipse Public License v. 2.0 are satisfied: GNU General Public License,
+ * version 2 with the GNU Classpath Exception, which is available at
+ * https://www.gnu.org/software/classpath/license.html.
+ *
+ * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+ */
+
 package org.glassfish.jersey.restclient;
 
 import java.lang.reflect.Proxy;
@@ -17,6 +33,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import javax.annotation.Priority;
 import javax.ws.rs.Priorities;
 import javax.ws.rs.client.Client;
 import javax.ws.rs.client.WebTarget;
@@ -43,6 +60,7 @@ public class RestClientBuilderImpl implements RestClientBuilder {
 
     private static final String CONFIG_DISABLE_DEFAULT_MAPPER = "microprofile.rest.client.disable.default.mapper";
     private static final String CONFIG_PROVIDERS = "/mp-rest/providers";
+    private static final String CONFIG_PROVIDER_PRIORITY = "/priority";
     private static final String PROVIDER_SEPARATOR = ",";
 
     private final Set<ResponseExceptionMapper> responseExceptionMappers;
@@ -108,26 +126,12 @@ public class RestClientBuilderImpl implements RestClientBuilder {
                 .getProperty(interfaceClass.getName() + CONFIG_PROVIDERS);
         if (providersFromJerseyConfig instanceof String && !((String) providersFromJerseyConfig).isEmpty()) {
             String[] providerArray = ((String) providersFromJerseyConfig).split(PROVIDER_SEPARATOR);
-            for (String provider : providerArray) {
-                try {
-                    Class<?> providerClass = Class.forName(provider);
-                    register(providerClass);
-                } catch (ClassNotFoundException e) {
-                    throw new IllegalStateException("Class with name " + provider + " not found");
-                }
-            }
+            processConfigProviders(interfaceClass, providerArray);
         }
         Optional<String> providersFromConfig = config.getOptionalValue(interfaceClass.getName() + CONFIG_PROVIDERS, String.class);
         if (providersFromConfig.isPresent() && !providersFromConfig.get().isEmpty()) {
             String[] providerArray = providersFromConfig.get().split(PROVIDER_SEPARATOR);
-            for (String provider : providerArray) {
-                try {
-                    Class<?> providerClass = Class.forName(provider);
-                    register(providerClass);
-                } catch (ClassNotFoundException e) {
-                    throw new IllegalStateException("Class with name " + provider + " not found");
-                }
-            }
+            processConfigProviders(interfaceClass, providerArray);
         }
         RegisterProvider[] registerProviders = interfaceClass.getAnnotationsByType(RegisterProvider.class);
         for (RegisterProvider registerProvider : registerProviders) {
@@ -150,7 +154,6 @@ public class RestClientBuilderImpl implements RestClientBuilder {
             }
         }
 
-
         RestClientModel restClientModel = RestClientModel.from(interfaceClass,
                                                                responseExceptionMappers,
                                                                paramConverterProviders,
@@ -169,6 +172,35 @@ public class RestClientBuilderImpl implements RestClientBuilder {
                                           new Class[] {interfaceClass},
                                           new ProxyInvocationHandler(webTarget, restClientModel)
         );
+    }
+
+    private void processConfigProviders(Class<?> restClientInterface, String[] providerArray) {
+        for (String provider : providerArray) {
+            try {
+                Class<?> providerClass = Class.forName(provider);
+                int priority = getProviderPriority(restClientInterface, providerClass);
+                register(providerClass, priority);
+            } catch (ClassNotFoundException e) {
+                throw new IllegalStateException("Class with name " + provider + " not found");
+            }
+        }
+    }
+
+    private int getProviderPriority(Class<?> restClientInterface, Class<?> providerClass) {
+        String property = restClientInterface.getName() + CONFIG_PROVIDERS + "/" +
+                providerClass.getName() + CONFIG_PROVIDER_PRIORITY;
+        Object providerPriorityJersey = jerseyClientBuilder.getConfiguration().getProperty(property);
+        if (providerPriorityJersey == null) {
+            //If property was not set on Jersey ClientBuilder, we need to check MP config.
+            Optional<Integer> providerPriorityMP = config.getOptionalValue(property, int.class);
+            if (providerPriorityMP.isPresent()) {
+                return providerPriorityMP.get();
+            }
+        } else if (providerPriorityJersey instanceof Integer) {
+            return (int) providerPriorityJersey;
+        }
+        Priority priority = providerClass.getAnnotation(Priority.class);
+        return priority == null ? -1 : priority.value();
     }
 
     @Override

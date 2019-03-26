@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2019 Oracle and/or its affiliates. All rights reserved.
+ *
+ * This program and the accompanying materials are made available under the
+ * terms of the Eclipse Public License v. 2.0, which is available at
+ * http://www.eclipse.org/legal/epl-2.0.
+ *
+ * This Source Code may also be made available under the following Secondary
+ * Licenses when the conditions for such availability set forth in the
+ * Eclipse Public License v. 2.0 are satisfied: GNU General Public License,
+ * version 2 with the GNU Classpath Exception, which is available at
+ * https://www.gnu.org/software/classpath/license.html.
+ *
+ * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+ */
+
 package org.glassfish.jersey.restclient;
 
 import java.lang.annotation.Annotation;
@@ -14,8 +30,11 @@ import java.util.stream.Collectors;
 import javax.ws.rs.HttpMethod;
 
 import org.eclipse.microprofile.rest.client.RestClientDefinitionException;
+import org.eclipse.microprofile.rest.client.annotation.ClientHeaderParam;
 
 /**
+ * Utils for interface handling.
+ *
  * @author David Kral
  */
 class InterfaceUtil {
@@ -23,8 +42,13 @@ class InterfaceUtil {
     private static final String PARAMETER_PARSE_REGEXP = "(?<=\\{).+?(?=\\})";
     private static final Pattern PATTERN = Pattern.compile(PARAMETER_PARSE_REGEXP);
 
-
-    public static List<String> parseParameters(String template) {
+    /**
+     * Parses all required parameters from template string.
+     *
+     * @param template template string
+     * @return parsed parameters
+     */
+    static List<String> parseParameters(String template) {
         List<String> allMatches = new ArrayList<>();
         Matcher m = PATTERN.matcher(template);
         while (m.find()) {
@@ -33,6 +57,13 @@ class InterfaceUtil {
         return allMatches;
     }
 
+    /**
+     * Validates and returns proper compute method defined in {@link ClientHeaderParam}.
+     *
+     * @param iClass interface class
+     * @param headerValue value of the header
+     * @return parsed method
+     */
     static Method parseComputeMethod(Class<?> iClass, String[] headerValue) {
         List<String> computeMethodNames = InterfaceUtil.parseParameters(Arrays.toString(headerValue));
         /*if more than one string is specified as the value attribute, and one of the strings is a
@@ -89,6 +120,12 @@ class InterfaceUtil {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Returns {@link List} of annotations which are type of {@link HttpMethod}.
+     *
+     * @param annotatedElement element with annotations
+     * @return annotations of given type
+     */
     static List<Class<?>> getHttpAnnotations(AnnotatedElement annotatedElement) {
         return Arrays.stream(annotatedElement.getDeclaredAnnotations())
                 .filter(annotation -> annotation.annotationType().getAnnotation(HttpMethod.class) != null)

@@ -63,6 +63,15 @@ class InterfaceModel {
     private final Set<ParamConverterProvider> paramConverterProviders;
     private final Set<Annotation> interceptorAnnotations;
 
+    /**
+     * Creates new model based on interface class. Interface is parsed according to specific annotations.
+     *
+     * @param restClientClass interface class
+     * @param responseExceptionMappers registered exception mappers
+     * @param paramConverterProviders registered parameter providers
+     * @param interceptorFactories registered interceptor factories
+     * @return new model instance
+     */
     static InterfaceModel from(Class<?> restClientClass,
                                Set<ResponseExceptionMapper> responseExceptionMappers,
                                Set<ParamConverterProvider> paramConverterProviders,
@@ -141,32 +150,65 @@ class InterfaceModel {
     /**
      * Returns {@link List} of processed annotation {@link ClientHeaderParam} to {@link ClientHeaderParamModel}
      *
-     * @return registered factory
+     * @return registered factories
      */
     List<ClientHeaderParamModel> getClientHeaders() {
         return clientHeaders;
     }
 
+    /**
+     * Returns {@link List} of registered {@link AsyncInvocationInterceptorFactory}
+     *
+     * @return registered factories
+     */
     List<AsyncInvocationInterceptorFactory> getInterceptorFactories() {
         return interceptorFactories;
     }
 
+    /**
+     * Returns {@link Set} of registered {@link ResponseExceptionMapper}
+     *
+     * @return registered exception mappers
+     */
     Set<ResponseExceptionMapper> getResponseExceptionMappers() {
         return responseExceptionMappers;
     }
 
+    /**
+     * Returns {@link Set} of registered {@link ParamConverterProvider}
+     *
+     * @return registered param converter providers
+     */
     Set<ParamConverterProvider> getParamConverterProviders() {
         return paramConverterProviders;
     }
 
+    /**
+     * Returns {@link Set} of interceptor annotations
+     *
+     * @return interceptor annotations
+     */
     Set<Annotation> getInterceptorAnnotations() {
         return interceptorAnnotations;
     }
 
+    /**
+     * Context bound to this model.
+     *
+     * @return context
+     */
     CreationalContext<?> getCreationalContext() {
         return creationalContext;
     }
 
+    /**
+     * Resolves value of the method argument.
+     *
+     * @param arg actual argument value
+     * @param type type of the argument
+     * @param annotations annotations bound to argument
+     * @return converted value of argument
+     */
     Object resolveParamValue(Object arg, Type type, Annotation[] annotations) {
         for (ParamConverterProvider paramConverterProvider : paramConverterProviders) {
             ParamConverter<Object> converter = paramConverterProvider
