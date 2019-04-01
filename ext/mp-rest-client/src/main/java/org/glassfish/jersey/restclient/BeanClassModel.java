@@ -215,7 +215,7 @@ class BeanClassModel {
         }
     }
 
-    private static class Builder implements io.helidon.common.Builder<BeanClassModel> {
+    private static class Builder {
 
         private final InterfaceModel interfaceModel;
         private final Class<?> beanClass;
@@ -286,8 +286,12 @@ class BeanClassModel {
             return this;
         }
 
-        @Override
-        public BeanClassModel build() {
+        /**
+         * Creates new BeanClassModel instance.
+         *
+         * @return new instance
+         */
+        BeanClassModel build() {
             return new BeanClassModel(this);
         }
     }

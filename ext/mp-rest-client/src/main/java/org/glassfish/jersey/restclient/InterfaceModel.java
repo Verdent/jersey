@@ -220,7 +220,7 @@ class InterfaceModel {
         return arg;
     }
 
-    private static class Builder implements io.helidon.common.Builder<InterfaceModel> {
+    private static class Builder {
 
         private final Class<?> restClientClass;
 
@@ -321,8 +321,12 @@ class InterfaceModel {
             return this;
         }
 
-        @Override
-        public InterfaceModel build() {
+        /**
+         * Creates new InterfaceModel instance.
+         *
+         * @return new instance
+         */
+        InterfaceModel build() {
             validateHeaderDuplicityNames();
             return new InterfaceModel(this);
         }

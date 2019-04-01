@@ -21,7 +21,10 @@ import java.lang.reflect.Type;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -34,9 +37,6 @@ import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.DeploymentException;
 import javax.enterprise.inject.spi.InjectionPoint;
 import javax.enterprise.inject.spi.PassivationCapable;
-
-import io.helidon.common.CollectionsHelper;
-import io.helidon.common.OptionalHelper;
 
 import org.eclipse.microprofile.config.Config;
 import org.eclipse.microprofile.config.ConfigProvider;
@@ -70,9 +70,9 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
     /**
      * Creates new instance of RestClientProducer.
      *
-     * @param qualifier qualifier which defines rest client interface
+     * @param qualifier     qualifier which defines rest client interface
      * @param interfaceType rest client interface
-     * @param beanManager bean manager
+     * @param beanManager   bean manager
      */
     RestClientProducer(RestClientExtension.MpRestClientQualifier qualifier,
                        Class<?> interfaceType,
@@ -86,16 +86,16 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
     }
 
     private String getBaseUrl(Class<?> interfaceType) {
-        return OptionalHelper.from(config.getOptionalValue(interfaceType.getName() + CONFIG_URI, String.class))
-                .or(() -> config.getOptionalValue(interfaceType.getName() + CONFIG_URL, String.class))
-                .asOptional()
-                .orElseGet(() -> {
+        Optional<String> uri = config.getOptionalValue(interfaceType.getName() + CONFIG_URI, String.class);
+        return uri.orElse(config.getOptionalValue(interfaceType.getName() + CONFIG_URL, String.class).orElseGet(
+                () -> {
                     RegisterRestClient registerRestClient = interfaceType.getAnnotation(RegisterRestClient.class);
                     if (registerRestClient != null) {
                         return registerRestClient.baseUri();
                     }
                     throw new DeploymentException("This interface has to be annotated with @RegisterRestClient annotation.");
-                });
+                }
+        ));
     }
 
     @Override
@@ -105,7 +105,7 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
 
     @Override
     public Set<InjectionPoint> getInjectionPoints() {
-        return CollectionsHelper.setOf();
+        return Collections.emptySet();
     }
 
     @Override
@@ -133,15 +133,18 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
 
     @Override
     public Set<Type> getTypes() {
-        return CollectionsHelper.setOf(interfaceType);
+        return Collections.singleton(interfaceType);
     }
 
     @Override
     public Set<Annotation> getQualifiers() {
         if (qualifier == null) {
-            return CollectionsHelper.setOf(Default.Literal.INSTANCE);
+            return Collections.singleton(Default.Literal.INSTANCE);
         }
-        return CollectionsHelper.setOf(qualifier, RestClient.LITERAL);
+        Set<Annotation> annotations = new HashSet<>();
+        annotations.add(qualifier);
+        annotations.add(RestClient.LITERAL);
+        return annotations;
     }
 
     @Override
@@ -159,7 +162,7 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
 
     @Override
     public Set<Class<? extends Annotation>> getStereotypes() {
-        return CollectionsHelper.setOf();
+        return Collections.emptySet();
     }
 
     @Override

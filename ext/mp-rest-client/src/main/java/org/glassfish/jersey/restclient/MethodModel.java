@@ -27,6 +27,7 @@ import java.lang.reflect.Proxy;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -65,8 +66,6 @@ import javax.ws.rs.core.MultivaluedHashMap;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilder;
-
-import io.helidon.common.CollectionsHelper;
 
 import org.eclipse.microprofile.rest.client.RestClientDefinitionException;
 import org.eclipse.microprofile.rest.client.annotation.ClientHeaderParam;
@@ -407,7 +406,7 @@ class MethodModel {
             return Arrays.asList(array);
         }
         String s = (String) value;
-        return CollectionsHelper.listOf(s);
+        return Collections.singletonList(s);
     }
 
     /**
@@ -468,7 +467,7 @@ class MethodModel {
         return parameterModels;
     }
 
-    private static class Builder implements io.helidon.common.Builder<MethodModel> {
+    private static class Builder {
 
         private final InterfaceModel interfaceModel;
         private final Method method;
@@ -609,11 +608,14 @@ class MethodModel {
             return this;
         }
 
-        @Override
-        public MethodModel build() {
+        /**
+         * Creates new MethodModel instance.
+         *
+         * @return new instance
+         */
+        MethodModel build() {
             validateParameters();
             validateHeaderDuplicityNames();
-            //TODO uklidit
             Optional<ParamModel> entity = parameterModels.stream()
                     .filter(ParamModel::isEntity)
                     .findFirst();

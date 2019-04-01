@@ -120,7 +120,7 @@ abstract class ParamModel<T> {
      */
     abstract boolean handles(Class<Annotation> annotation);
 
-    protected static class Builder implements io.helidon.common.Builder<ParamModel> {
+    protected static class Builder {
 
         private InterfaceModel interfaceModel;
         private Type type;
@@ -263,8 +263,12 @@ abstract class ParamModel<T> {
             return matrixParamName;
         }
 
-        @Override
-        public ParamModel build() {
+        /**
+         * Creates new ParamModel instance.
+         *
+         * @return new instance
+         */
+        ParamModel build() {
             if (pathParamName != null) {
                 return new PathParamModel(this);
             } else if (headerParamName != null) {

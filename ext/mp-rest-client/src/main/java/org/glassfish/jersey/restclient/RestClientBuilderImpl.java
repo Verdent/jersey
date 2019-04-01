@@ -50,6 +50,7 @@ import org.eclipse.microprofile.rest.client.ext.AsyncInvocationInterceptorFactor
 import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
 import org.eclipse.microprofile.rest.client.spi.RestClientListener;
 import org.glassfish.jersey.client.JerseyClientBuilder;
+import org.glassfish.jersey.server.model.Resource;
 
 /**
  * Rest client builder implementation. Creates proxy instance of requested interface.
@@ -158,6 +159,9 @@ public class RestClientBuilderImpl implements RestClientBuilder {
                                                                responseExceptionMappers,
                                                                paramConverterProviders,
                                                                asyncInterceptorFactories);
+
+        Resource resource = Resource.from(interfaceClass);
+
         //AsyncInterceptors initialization
         List<AsyncInvocationInterceptor> asyncInterceptors = asyncInterceptorFactories.stream()
                 .map(AsyncInvocationInterceptorFactory::newInterceptor)
@@ -249,7 +253,7 @@ public class RestClientBuilderImpl implements RestClientBuilder {
         if (isSupportedCustomProvider(aClass)) {
             register(ReflectionUtil.createInstance(aClass), map);
         } else {
-            jerseyClientBuilder.register(aClass, new HashMap<>(map));
+            jerseyClientBuilder.register(aClass, map);
         }
         return this;
     }
@@ -294,7 +298,7 @@ public class RestClientBuilderImpl implements RestClientBuilder {
                 registerCustomProvider(o, map.get(ParamConverterProvider.class));
             }
         }
-        jerseyClientBuilder.register(o, new HashMap<>(map));
+        jerseyClientBuilder.register(o, map);
         return this;
     }
 

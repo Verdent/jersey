@@ -57,7 +57,7 @@ class RestClientModel {
                                                             paramConverterProviders,
                                                             interceptorFactories);
         return new Builder()
-                .classModel(interfaceModel)
+                .interfaceModel(interfaceModel)
                 .methodModels(parseMethodModels(interfaceModel))
                 .build();
     }
@@ -94,7 +94,7 @@ class RestClientModel {
         return methodMap;
     }
 
-    private static class Builder implements io.helidon.common.Builder<RestClientModel> {
+    private static class Builder {
 
         private InterfaceModel classModel;
         private Map<Method, MethodModel> methodModels;
@@ -108,7 +108,7 @@ class RestClientModel {
          * @param classModel {@link InterfaceModel} instance
          * @return Updated Builder instance
          */
-        Builder classModel(InterfaceModel classModel) {
+        Builder interfaceModel(InterfaceModel classModel) {
             this.classModel = classModel;
             return this;
         }
@@ -124,7 +124,11 @@ class RestClientModel {
             return this;
         }
 
-        @Override
+        /**
+         * Creates new RestClientModel instance.
+         *
+         * @return new instance
+         */
         public RestClientModel build() {
             return new RestClientModel(this);
         }
