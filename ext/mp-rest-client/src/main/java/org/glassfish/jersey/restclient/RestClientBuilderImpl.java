@@ -31,6 +31,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import javax.annotation.Priority;
@@ -71,7 +72,7 @@ public class RestClientBuilderImpl implements RestClientBuilder {
     private final ConfigWrapper configWrapper;
     private URI uri;
     private JerseyClientBuilder jerseyClientBuilder;
-    private ExecutorService executorService;
+    private Supplier<ExecutorService> executorService;
 
     RestClientBuilderImpl() {
         jerseyClientBuilder = new JerseyClientBuilder();
@@ -80,7 +81,7 @@ public class RestClientBuilderImpl implements RestClientBuilder {
         asyncInterceptorFactories = new ArrayList<>();
         config = ConfigProvider.getConfig();
         configWrapper = new ConfigWrapper(jerseyClientBuilder.getConfiguration());
-        executorService = Executors.newCachedThreadPool();
+        executorService = Executors::newCachedThreadPool;
     }
 
     @Override
@@ -110,8 +111,7 @@ public class RestClientBuilderImpl implements RestClientBuilder {
         if (executor == null) {
             throw new IllegalArgumentException("ExecutorService cannot be null.");
         }
-        executorService = executor;
-        jerseyClientBuilder.executorService(executor);
+        executorService = () -> executor;
         return this;
     }
 
@@ -156,22 +156,22 @@ public class RestClientBuilderImpl implements RestClientBuilder {
             }
         }
 
-        RestClientModel restClientModel = RestClientModel.from(interfaceClass,
-                                                               responseExceptionMappers,
-                                                               paramConverterProviders,
-                                                               asyncInterceptorFactories);
-
         //AsyncInterceptors initialization
         List<AsyncInvocationInterceptor> asyncInterceptors = asyncInterceptorFactories.stream()
                 .map(AsyncInvocationInterceptorFactory::newInterceptor)
                 .collect(Collectors.toList());
         asyncInterceptors.forEach(AsyncInvocationInterceptor::prepareContext);
-        executorService(new ExecutorServiceWrapper(executorService,
-                                                   asyncInterceptors));
 
-        Client client = jerseyClientBuilder.build();
-        JerseyClient jerseyClient = (JerseyClient) client;
-        jerseyClient.preInitialize();
+        jerseyClientBuilder.executorService(new ExecutorServiceWrapper(executorService.get(), asyncInterceptors));
+
+        RestClientModel restClientModel = RestClientModel.from(interfaceClass,
+                                                               responseExceptionMappers,
+                                                               paramConverterProviders,
+                                                               asyncInterceptors);
+
+
+        JerseyClient client = jerseyClientBuilder.build();
+        client.preInitialize();
         WebTarget webTarget = client.target(this.uri);
         return (T) Proxy.newProxyInstance(interfaceClass.getClassLoader(),
                                           new Class[] {interfaceClass},

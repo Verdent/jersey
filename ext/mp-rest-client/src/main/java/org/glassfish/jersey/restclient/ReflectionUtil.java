@@ -16,17 +16,38 @@
 
 package org.glassfish.jersey.restclient;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Proxy;
+
 /**
  * Created by David Kral.
  */
-public class ReflectionUtil {
+class ReflectionUtil {
 
-    public static <T> T createInstance(Class<T> tClass) {
+    static <T> T createInstance(Class<T> tClass) {
         try {
             return tClass.newInstance();
         } catch (Throwable t) {
             throw new RuntimeException("No default constructor in class " + tClass + " present. Class cannot be created!", t);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    static <T> T createProxyInstance(Class<T> restClientClass) {
+        return (T) Proxy.newProxyInstance(
+                Thread.currentThread().getContextClassLoader(),
+                new Class[] {restClientClass},
+                (proxy, m, args) -> {
+                    Constructor<MethodHandles.Lookup> constructor = MethodHandles.Lookup.class
+                            .getDeclaredConstructor(Class.class);
+                    constructor.setAccessible(true);
+                    return constructor.newInstance(restClientClass)
+                            .in(restClientClass)
+                            .unreflectSpecial(m, restClientClass)
+                            .bindTo(proxy)
+                            .invokeWithArguments(args);
+                });
     }
 
 }

@@ -98,22 +98,14 @@ class ExecutorServiceWrapper implements ExecutorService {
     private <T> Callable<T> wrap(Callable<T> task) {
         return () -> {
             asyncInterceptors.forEach(AsyncInvocationInterceptor::applyContext);
-            try {
-                return task.call();
-            } finally {
-                asyncInterceptors.forEach(AsyncInvocationInterceptor::removeContext);
-            }
+            return task.call();
         };
     }
 
     private Runnable wrap(Runnable task) {
         return () -> {
             asyncInterceptors.forEach(AsyncInvocationInterceptor::applyContext);
-            try {
-                task.run();
-            } finally {
-                asyncInterceptors.forEach(AsyncInvocationInterceptor::removeContext);
-            }
+            task.run();
         };
     }
 

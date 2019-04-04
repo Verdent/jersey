@@ -36,6 +36,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
@@ -57,7 +58,6 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.Invocation;
-import javax.ws.rs.client.InvocationCallback;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.GenericType;
 import javax.ws.rs.core.HttpHeaders;
@@ -69,6 +69,7 @@ import javax.ws.rs.core.UriBuilder;
 
 import org.eclipse.microprofile.rest.client.RestClientDefinitionException;
 import org.eclipse.microprofile.rest.client.annotation.ClientHeaderParam;
+import org.eclipse.microprofile.rest.client.ext.AsyncInvocationInterceptor;
 import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
 
 /**
@@ -127,7 +128,7 @@ class MethodModel {
             subResourceModel = RestClientModel.from(returnType,
                                                     interfaceModel.getResponseExceptionMappers(),
                                                     interfaceModel.getParamConverterProviders(),
-                                                    interfaceModel.getInterceptorFactories());
+                                                    interfaceModel.getAsyncInterceptors());
         } else {
             subResourceModel = null;
         }
@@ -221,40 +222,40 @@ class MethodModel {
         ParameterizedType type = (ParameterizedType) method.getGenericReturnType();
         Type actualTypeArgument = type.getActualTypeArguments()[0]; //completionStage<actualTypeArgument>
         CompletableFuture<Object> result = new CompletableFuture<>();
-        InvocationCallback<Response> callback = new InvocationCallback<Response>() {
-            @Override
-            public void completed(Response response) {
-                try {
-                    evaluateResponse(response, method);
-                    if (returnType.equals(Void.class)) {
-                        result.complete(null);
-                    } else if (returnType.equals(Response.class)) {
-                        result.complete(response);
-                    } else {
-                        result.complete(response.readEntity(new GenericType<>(actualTypeArgument)));
-                    }
-                } catch (Exception e) {
-                    result.completeExceptionally(e);
-                }
-            }
-
-            @Override
-            public void failed(Throwable throwable) {
-                result.completeExceptionally(throwable);
-            }
-        };
+        Future<Response> theFuture;
         if (entity != null
                 && !httpMethod.equals(GET.class.getSimpleName())
                 && !httpMethod.equals(DELETE.class.getSimpleName())) {
-            builder.async().method(httpMethod, Entity.entity(entity, consumes[0]),
-                                   callback);
+            theFuture = builder.async().method(httpMethod, Entity.entity(entity, consumes[0]));
         } else {
-            builder.async().method(httpMethod, callback);
+            theFuture = builder.async().method(httpMethod);
         }
+
+        CompletableFuture<Response> completableFuture = (CompletableFuture<Response>) theFuture;
+        completableFuture.thenAccept(response -> {
+            interfaceModel.getAsyncInterceptors().forEach(AsyncInvocationInterceptor::removeContext);
+            try {
+                evaluateResponse(response, method);
+                if (returnType.equals(Void.class)) {
+                    result.complete(null);
+                } else if (returnType.equals(Response.class)) {
+                    result.complete(response);
+                } else {
+                    result.complete(response.readEntity(new GenericType<>(actualTypeArgument)));
+                }
+            } catch (Exception e) {
+                result.completeExceptionally(e);
+            }
+        }).exceptionally(throwable -> {
+            interfaceModel.getAsyncInterceptors().forEach(AsyncInvocationInterceptor::removeContext);
+            result.completeExceptionally(throwable);
+            return null;
+        });
 
         return result;
     }
 
+    @SuppressWarnings("unchecked")
     private <T> T subResourceProxy(WebTarget webTarget, Class<T> subResourceType) {
         return (T) Proxy.newProxyInstance(subResourceType.getClassLoader(),
                                           new Class[] {subResourceType},
@@ -350,7 +351,7 @@ class MethodModel {
                     if (method.isDefault()) {
                         //method is interface default
                         //we need to create instance of the interface to be able to call default method
-                        T instance = (T) createInstance(interfaceModel.getRestClientClass());
+                        T instance = (T) ReflectionUtil.createProxyInstance(interfaceModel.getRestClientClass());
                         if (method.getParameterCount() > 0) {
                             customHeaders.put(clientHeaderParamModel.getHeaderName(),
                                               createList(method.invoke(instance, clientHeaderParamModel.getHeaderName())));
@@ -381,22 +382,6 @@ class MethodModel {
             }
         }
         return customHeaders;
-    }
-
-    private <T> T createInstance(Class<T> restClientClass) {
-        return (T) Proxy.newProxyInstance(
-                Thread.currentThread().getContextClassLoader(),
-                new Class[] {restClientClass},
-                (proxy, m, args) -> {
-                    Constructor<MethodHandles.Lookup> constructor = MethodHandles.Lookup.class
-                            .getDeclaredConstructor(Class.class);
-                    constructor.setAccessible(true);
-                    return constructor.newInstance(restClientClass)
-                            .in(restClientClass)
-                            .unreflectSpecial(m, restClientClass)
-                            .bindTo(proxy)
-                            .invokeWithArguments(args);
-                });
     }
 
     private static List<String> createList(Object value) {

@@ -26,7 +26,7 @@ import java.util.Set;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.ext.ParamConverterProvider;
 
-import org.eclipse.microprofile.rest.client.ext.AsyncInvocationInterceptorFactory;
+import org.eclipse.microprofile.rest.client.ext.AsyncInvocationInterceptor;
 import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
 
 /**
@@ -36,7 +36,7 @@ import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
  */
 class RestClientModel {
 
-    private final InterfaceModel classModel;
+    private final InterfaceModel interfaceModel;
     private final Map<Method, MethodModel> methodModels;
 
     /**
@@ -45,17 +45,17 @@ class RestClientModel {
      * @param restClientClass          rest client interface
      * @param responseExceptionMappers registered exception mappers
      * @param paramConverterProviders  registered param converters
-     * @param interceptorFactories     registered async interceptor factories
+     * @param asyncInterceptors        registered async interceptor factories
      * @return new instance
      */
     static RestClientModel from(Class<?> restClientClass,
                                 Set<ResponseExceptionMapper> responseExceptionMappers,
                                 Set<ParamConverterProvider> paramConverterProviders,
-                                List<AsyncInvocationInterceptorFactory> interceptorFactories) {
+                                List<AsyncInvocationInterceptor> asyncInterceptors) {
         InterfaceModel interfaceModel = InterfaceModel.from(restClientClass,
                                                             responseExceptionMappers,
                                                             paramConverterProviders,
-                                                            interceptorFactories);
+                                                            asyncInterceptors);
         return new Builder()
                 .interfaceModel(interfaceModel)
                 .methodModels(parseMethodModels(interfaceModel))
@@ -63,7 +63,7 @@ class RestClientModel {
     }
 
     private RestClientModel(Builder builder) {
-        this.classModel = builder.classModel;
+        this.interfaceModel = builder.classModel;
         this.methodModels = builder.methodModels;
     }
 
@@ -75,10 +75,22 @@ class RestClientModel {
      * @param args          actual method parameters
      * @return method return value
      */
-    Object invokeMethod(WebTarget baseWebTarget, Method method, Object[] args) {
-        WebTarget classLevelTarget = baseWebTarget.path(classModel.getPath());
+    <T> Object invokeMethod(WebTarget baseWebTarget, Method method, Object[] args) {
+        WebTarget classLevelTarget = baseWebTarget.path(interfaceModel.getPath());
         MethodModel methodModel = methodModels.get(method);
-        return new InterceptorInvocationContext(classLevelTarget, methodModel, method, args).proceed();
+        if (methodModel != null) {
+            return new InterceptorInvocationContext(classLevelTarget, methodModel, method, args).proceed();
+        }
+        try {
+            if (method.isDefault()) {
+                T instance = (T) ReflectionUtil.createProxyInstance(interfaceModel.getRestClientClass());
+                return method.invoke(instance, args);
+            } else {
+                throw new UnsupportedOperationException("This method is not supported!");
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private static Map<Method, MethodModel> parseMethodModels(InterfaceModel classModel) {
@@ -136,6 +148,6 @@ class RestClientModel {
 
     @Override
     public String toString() {
-        return classModel.getRestClientClass().getName();
+        return interfaceModel.getRestClientClass().getName();
     }
 }
