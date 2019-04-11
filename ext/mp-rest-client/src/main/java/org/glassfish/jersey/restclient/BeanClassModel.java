@@ -16,6 +16,7 @@
 
 package org.glassfish.jersey.restclient;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
@@ -232,10 +233,7 @@ class BeanClassModel {
          * @return updated builder instance
          */
         Builder processPathFields() {
-            Stream.of(beanClass.getDeclaredFields())
-                    .filter(field -> field.isAnnotationPresent(PathParam.class))
-                    .forEach(field -> parameterModels.add(ParamModel.from(interfaceModel, field.getType(), field, -1)));
-            return this;
+            return processFieldsByParameterClass(PathParam.class);
         }
 
         /**
@@ -244,10 +242,7 @@ class BeanClassModel {
          * @return updated builder instance
          */
         Builder processHeaderFields() {
-            Stream.of(beanClass.getDeclaredFields())
-                    .filter(field -> field.isAnnotationPresent(HeaderParam.class))
-                    .forEach(field -> parameterModels.add(ParamModel.from(interfaceModel, field.getType(), field, -1)));
-            return this;
+            return processFieldsByParameterClass(HeaderParam.class);
         }
 
         /**
@@ -256,10 +251,7 @@ class BeanClassModel {
          * @return updated builder instance
          */
         Builder processCookieFields() {
-            Stream.of(beanClass.getDeclaredFields())
-                    .filter(field -> field.isAnnotationPresent(CookieParam.class))
-                    .forEach(field -> parameterModels.add(ParamModel.from(interfaceModel, field.getType(), field, -1)));
-            return this;
+            return processFieldsByParameterClass(CookieParam.class);
         }
 
         /**
@@ -268,10 +260,7 @@ class BeanClassModel {
          * @return updated builder instance
          */
         Builder processQueryFields() {
-            Stream.of(beanClass.getDeclaredFields())
-                    .filter(field -> field.isAnnotationPresent(QueryParam.class))
-                    .forEach(field -> parameterModels.add(ParamModel.from(interfaceModel, field.getType(), field, -1)));
-            return this;
+            return processFieldsByParameterClass(QueryParam.class);
         }
 
         /**
@@ -280,8 +269,12 @@ class BeanClassModel {
          * @return updated builder instance
          */
         Builder processMatrixFields() {
+            return processFieldsByParameterClass(MatrixParam.class);
+        }
+
+        private Builder processFieldsByParameterClass(Class<? extends Annotation> parameterClass) {
             Stream.of(beanClass.getDeclaredFields())
-                    .filter(field -> field.isAnnotationPresent(MatrixParam.class))
+                    .filter(field -> field.isAnnotationPresent(parameterClass))
                     .forEach(field -> parameterModels.add(ParamModel.from(interfaceModel, field.getType(), field, -1)));
             return this;
         }
