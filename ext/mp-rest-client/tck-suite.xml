@@ -30,6 +30,13 @@
                 </methods>
             </class>
         </classes>
+<!--        <classes>-->
+<!--            <class name="org.eclipse.microprofile.rest.client.tck.asynctests.AsyncMethodTest">-->
+<!--                <methods>-->
+<!--                    <include name="testAsyncInvocationInterceptorProvider"/>-->
+<!--                </methods>-->
+<!--            </class>-->
+<!--        </classes>-->
     </test>
 
 </suite>

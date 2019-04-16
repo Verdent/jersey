@@ -17,8 +17,6 @@
 package org.glassfish.jersey.restclient;
 
 import java.lang.annotation.Annotation;
-import java.lang.invoke.MethodHandles;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
@@ -128,7 +126,8 @@ class MethodModel {
             subResourceModel = RestClientModel.from(returnType,
                                                     interfaceModel.getResponseExceptionMappers(),
                                                     interfaceModel.getParamConverterProviders(),
-                                                    interfaceModel.getAsyncInterceptors());
+                                                    interfaceModel.getAsyncInterceptors(),
+                                                    interfaceModel.getInjectionManager());
         } else {
             subResourceModel = null;
         }
@@ -444,9 +443,12 @@ class MethodModel {
 
     private static List<ParamModel> parameterModels(InterfaceModel classModel, Method method) {
         ArrayList<ParamModel> parameterModels = new ArrayList<>();
+        final List<org.glassfish.jersey.model.Parameter> jerseyParameters = org.glassfish.jersey.model.Parameter
+                .create(classModel.getRestClientClass(), classModel.getRestClientClass(),
+                        method, false);
         Parameter[] parameters = method.getParameters();
         for (int i = 0; i < parameters.length; i++) {
-            parameterModels.add(ParamModel.from(classModel, parameters[i].getType(), parameters[i], i));
+            parameterModels.add(ParamModel.from(classModel, parameters[i].getType(), parameters[i], jerseyParameters.get(i), i));
         }
         return parameterModels;
     }

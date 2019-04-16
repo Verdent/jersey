@@ -41,9 +41,7 @@ class PathParamModel extends ParamModel<WebTarget> {
 
     @Override
     public WebTarget handleParameter(WebTarget requestPart, Class<?> annotationClass, Object instance) {
-        Object resolvedValue = interfaceModel.resolveParamValue(instance,
-                                                                getType(),
-                                                                getAnnotatedElement().getAnnotations());
+        Object resolvedValue = interfaceModel.resolveParamValue(instance, parameter);
         return requestPart.resolveTemplate(pathParamName, resolvedValue);
     }
 

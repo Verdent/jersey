@@ -42,5 +42,6 @@ public class RestClientModelTest extends JerseyTest {
                 .baseUri(new URI("http://localhost:9998"))
                 .build(ApplicationResource.class);
         System.out.println(app.getValue());
+        System.out.println(app.sayHi());
     }
 }

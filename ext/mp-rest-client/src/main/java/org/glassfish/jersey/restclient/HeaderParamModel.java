@@ -39,9 +39,7 @@ class HeaderParamModel extends ParamModel<MultivaluedMap<String, Object>> {
     @Override
     MultivaluedMap<String, Object> handleParameter(MultivaluedMap<String, Object> requestPart,
                                                           Class<?> annotationClass, Object instance) {
-        Object resolvedValue = interfaceModel.resolveParamValue(instance,
-                                                                getType(),
-                                                                getAnnotatedElement().getAnnotations());
+        Object resolvedValue = interfaceModel.resolveParamValue(instance, parameter);
         requestPart.put(headerParamName, Collections.singletonList(resolvedValue));
         return requestPart;
     }

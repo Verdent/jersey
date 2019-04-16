@@ -28,6 +28,7 @@ import javax.ws.rs.ext.ParamConverterProvider;
 
 import org.eclipse.microprofile.rest.client.ext.AsyncInvocationInterceptor;
 import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
+import org.glassfish.jersey.internal.inject.InjectionManager;
 
 /**
  * Model of the rest client interface.
@@ -46,16 +47,19 @@ class RestClientModel {
      * @param responseExceptionMappers registered exception mappers
      * @param paramConverterProviders  registered param converters
      * @param asyncInterceptors        registered async interceptor factories
+     * @param injectionManager
      * @return new instance
      */
     static RestClientModel from(Class<?> restClientClass,
                                 Set<ResponseExceptionMapper> responseExceptionMappers,
                                 Set<ParamConverterProvider> paramConverterProviders,
-                                List<AsyncInvocationInterceptor> asyncInterceptors) {
+                                List<AsyncInvocationInterceptor> asyncInterceptors,
+                                InjectionManager injectionManager) {
         InterfaceModel interfaceModel = InterfaceModel.from(restClientClass,
                                                             responseExceptionMappers,
                                                             paramConverterProviders,
-                                                            asyncInterceptors);
+                                                            asyncInterceptors,
+                                                            injectionManager);
         return new Builder()
                 .interfaceModel(interfaceModel)
                 .methodModels(parseMethodModels(interfaceModel))

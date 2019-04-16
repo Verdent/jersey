@@ -42,6 +42,11 @@ import org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
 import org.eclipse.microprofile.rest.client.ext.AsyncInvocationInterceptor;
 import org.eclipse.microprofile.rest.client.ext.ClientHeadersFactory;
 import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
+import org.glassfish.jersey.client.inject.ParameterInserter;
+import org.glassfish.jersey.client.inject.ParameterInserterProvider;
+import org.glassfish.jersey.internal.inject.InjectionManager;
+import org.glassfish.jersey.internal.inject.Providers;
+import org.glassfish.jersey.model.Parameter;
 
 /**
  * Model of interface and its annotation.
@@ -50,6 +55,7 @@ import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
  */
 class InterfaceModel {
 
+    private final InjectionManager injectionManager;
     private final Class<?> restClientClass;
     private final String[] produces;
     private final String[] consumes;
@@ -70,16 +76,19 @@ class InterfaceModel {
      * @param responseExceptionMappers registered exception mappers
      * @param paramConverterProviders registered parameter providers
      * @param asyncInterceptors async interceptors
+     * @param injectionManager
      * @return new model instance
      */
     static InterfaceModel from(Class<?> restClientClass,
                                Set<ResponseExceptionMapper> responseExceptionMappers,
                                Set<ParamConverterProvider> paramConverterProviders,
-                               List<AsyncInvocationInterceptor> asyncInterceptors) {
+                               List<AsyncInvocationInterceptor> asyncInterceptors,
+                               InjectionManager injectionManager) {
         return new Builder(restClientClass,
                            responseExceptionMappers,
                            paramConverterProviders,
-                           asyncInterceptors)
+                           asyncInterceptors,
+                           injectionManager)
                 .pathValue(restClientClass.getAnnotation(Path.class))
                 .produces(restClientClass.getAnnotation(Produces.class))
                 .consumes(restClientClass.getAnnotation(Consumes.class))
@@ -89,6 +98,7 @@ class InterfaceModel {
     }
 
     private InterfaceModel(Builder builder) {
+        this.injectionManager = builder.injectionManager;
         this.restClientClass = builder.restClientClass;
         this.path = builder.pathValue;
         this.produces = builder.produces;
@@ -202,19 +212,28 @@ class InterfaceModel {
     }
 
     /**
+     *
+     *
+     * @return
+     */
+    public InjectionManager getInjectionManager() {
+        return injectionManager;
+    }
+
+    /**
      * Resolves value of the method argument.
      *
      * @param arg actual argument value
-     * @param type type of the argument
-     * @param annotations annotations bound to argument
      * @return converted value of argument
      */
-    Object resolveParamValue(Object arg, Type type, Annotation[] annotations) {
-        for (ParamConverterProvider paramConverterProvider : paramConverterProviders) {
-            ParamConverter<Object> converter = paramConverterProvider
-                    .getConverter((Class<Object>) type, null, annotations);
-            if (converter != null) {
-                return converter.toString(arg);
+    Object resolveParamValue(Object arg, Parameter parameter) {
+        final Iterable<ParameterInserterProvider> parameterInserterProviders
+                = Providers.getAllProviders(injectionManager, ParameterInserterProvider.class);
+        for (final ParameterInserterProvider parameterInserterProvider : parameterInserterProviders) {
+            if (parameterInserterProvider != null) {
+                ParameterInserter<Object, Object> inserter =
+                        (ParameterInserter<Object, Object>) parameterInserterProvider.get(parameter);
+                return inserter.insert(arg);
             }
         }
         return arg;
@@ -224,6 +243,7 @@ class InterfaceModel {
 
         private final Class<?> restClientClass;
 
+        private final InjectionManager injectionManager;
         private String pathValue;
         private String[] produces;
         private String[] consumes;
@@ -238,7 +258,9 @@ class InterfaceModel {
         private Builder(Class<?> restClientClass,
                         Set<ResponseExceptionMapper> responseExceptionMappers,
                         Set<ParamConverterProvider> paramConverterProviders,
-                        List<AsyncInvocationInterceptor> asyncInterceptors) {
+                        List<AsyncInvocationInterceptor> asyncInterceptors,
+                        InjectionManager injectionManager) {
+            this.injectionManager = injectionManager;
             this.restClientClass = restClientClass;
             this.responseExceptionMappers = responseExceptionMappers;
             this.paramConverterProviders = paramConverterProviders;

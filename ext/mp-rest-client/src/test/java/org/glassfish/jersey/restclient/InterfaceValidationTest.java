@@ -28,7 +28,8 @@ public class InterfaceValidationTest {
 
     @Test
     public void testValidInterface() {
-        RestClientModel.from(CorrectInterface.class, new HashSet<>(), new HashSet<>(), new ArrayList<>());
+        RestClientModel.from(CorrectInterface.class, new HashSet<>(), new HashSet<>(), new ArrayList<>(),
+                             null);
     }
 
 }

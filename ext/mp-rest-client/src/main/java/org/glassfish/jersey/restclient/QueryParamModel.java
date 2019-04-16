@@ -39,9 +39,7 @@ class QueryParamModel extends ParamModel<Map<String, Object[]>> {
     public Map<String, Object[]> handleParameter(Map<String, Object[]> requestPart,
                                                  Class<?> annotationClass,
                                                  Object instance) {
-        Object resolvedValue = interfaceModel.resolveParamValue(instance,
-                                                                getType(),
-                                                                getAnnotatedElement().getAnnotations());
+        Object resolvedValue = interfaceModel.resolveParamValue(instance, parameter);
         if (resolvedValue instanceof Object[]) {
             requestPart.put(queryParamName, (Object[]) resolvedValue);
         } else {

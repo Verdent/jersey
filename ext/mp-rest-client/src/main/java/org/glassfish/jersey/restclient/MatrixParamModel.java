@@ -44,9 +44,7 @@ class MatrixParamModel extends ParamModel<WebTarget> {
 
     @Override
     public WebTarget handleParameter(WebTarget requestPart, Class<?> annotationClass, Object instance) {
-        Object resolvedValue = interfaceModel.resolveParamValue(instance,
-                                                                getType(),
-                                                                getAnnotatedElement().getAnnotations());
+        Object resolvedValue = interfaceModel.resolveParamValue(instance, parameter);
         if (resolvedValue instanceof Collection) {
             return requestPart.matrixParam(matrixParamName, ((Collection) resolvedValue).toArray());
         } else {

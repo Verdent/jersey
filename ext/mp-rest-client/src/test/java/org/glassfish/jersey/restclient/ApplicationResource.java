@@ -33,5 +33,9 @@ public interface ApplicationResource {
     @POST
     String postAppendValue(String value);
 
+    default String sayHi() {
+        return "Hi";
+    }
+
 
 }

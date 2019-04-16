@@ -28,6 +28,8 @@ import javax.ws.rs.MatrixParam;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.QueryParam;
 
+import org.glassfish.jersey.model.Parameter;
+
 /**
  * Abstract model for all elements with parameter annotation.
  *
@@ -35,7 +37,8 @@ import javax.ws.rs.QueryParam;
  */
 abstract class ParamModel<T> {
 
-    final InterfaceModel interfaceModel;
+    protected final InterfaceModel interfaceModel;
+    protected final Parameter parameter;
     private final Type type;
     private final AnnotatedElement annotatedElement;
     private final int paramPosition;
@@ -50,8 +53,9 @@ abstract class ParamModel<T> {
      * @param position position in method params
      * @return new parameter instance
      */
-    static ParamModel from(InterfaceModel interfaceModel, Type type, AnnotatedElement annotatedElement, int position) {
-        return new Builder(interfaceModel, type, annotatedElement)
+    static ParamModel from(InterfaceModel interfaceModel, Type type, AnnotatedElement annotatedElement,
+                           Parameter parameter, int position) {
+        return new Builder(interfaceModel, type, annotatedElement, parameter)
                 .pathParamName(annotatedElement.getAnnotation(PathParam.class))
                 .headerParamName(annotatedElement.getAnnotation(HeaderParam.class))
                 .beanParam(annotatedElement.getAnnotation(BeanParam.class))
@@ -69,6 +73,7 @@ abstract class ParamModel<T> {
         this.annotatedElement = builder.annotatedElement;
         this.entity = builder.entity;
         this.paramPosition = builder.paramPosition;
+        this.parameter = builder.parameter;
     }
 
     /**
@@ -125,6 +130,7 @@ abstract class ParamModel<T> {
         private InterfaceModel interfaceModel;
         private Type type;
         private AnnotatedElement annotatedElement;
+        private Parameter parameter;
         private String pathParamName;
         private String headerParamName;
         private String cookieParamName;
@@ -135,10 +141,11 @@ abstract class ParamModel<T> {
         private boolean entity;
         private int paramPosition;
 
-        private Builder(InterfaceModel interfaceModel, Type type, AnnotatedElement annotatedElement) {
+        private Builder(InterfaceModel interfaceModel, Type type, AnnotatedElement annotatedElement, Parameter parameter) {
             this.interfaceModel = interfaceModel;
             this.type = type;
             this.annotatedElement = annotatedElement;
+            this.parameter = parameter;
         }
 
         /**

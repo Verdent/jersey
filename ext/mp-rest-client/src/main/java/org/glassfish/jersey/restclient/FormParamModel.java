@@ -40,9 +40,7 @@ class FormParamModel extends ParamModel<Form> {
 
     @Override
     Form handleParameter(Form form, Class<?> annotationClass, Object instance) {
-        Object resolvedValue = interfaceModel.resolveParamValue(instance,
-                                                                getType(),
-                                                                getAnnotatedElement().getAnnotations());
+        Object resolvedValue = interfaceModel.resolveParamValue(instance, parameter);
         if (resolvedValue instanceof Collection) {
             for (final Object v : ((Collection) resolvedValue)) {
                 form.param(formParamName, v.toString());

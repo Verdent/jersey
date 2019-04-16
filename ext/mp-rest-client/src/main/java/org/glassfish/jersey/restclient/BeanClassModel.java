@@ -35,6 +35,8 @@ import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Form;
 import javax.ws.rs.core.MultivaluedMap;
 
+import org.glassfish.jersey.model.Parameter;
+
 /**
  * Model of method parameter annotated by {@link BeanParam} annotation.
  *
@@ -273,9 +275,15 @@ class BeanClassModel {
         }
 
         private Builder processFieldsByParameterClass(Class<? extends Annotation> parameterClass) {
-            Stream.of(beanClass.getDeclaredFields())
-                    .filter(field -> field.isAnnotationPresent(parameterClass))
-                    .forEach(field -> parameterModels.add(ParamModel.from(interfaceModel, field.getType(), field, -1)));
+            for (Field field : beanClass.getDeclaredFields()) {
+                if (field.isAnnotationPresent(parameterClass)) {
+                    Parameter parameter = Parameter.create(parameterClass, parameterClass, false,
+                                                           field.getType(), field.getGenericType(),
+                                                           field.getDeclaredAnnotations());
+                    parameterModels.add(ParamModel.from(interfaceModel, field.getType(), field,
+                                                        parameter, -1));
+                }
+            }
             return this;
         }
 

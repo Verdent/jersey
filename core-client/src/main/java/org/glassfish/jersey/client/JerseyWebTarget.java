@@ -26,6 +26,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.UriBuilder;
 
 import org.glassfish.jersey.internal.guava.Preconditions;
+import org.glassfish.jersey.internal.inject.InjectionManager;
 
 /**
  * Jersey implementation of {@link javax.ws.rs.client.WebTarget JAX-RS client target}
@@ -352,6 +353,15 @@ public class JerseyWebTarget implements javax.ws.rs.client.WebTarget, Initializa
     public JerseyWebTarget preInitialize() {
         config.preInitialize();
         return this;
+    }
+
+    /**
+     * Returns injection manager.
+     *
+     * @return injection manager
+     */
+    public InjectionManager getInjectionManager() {
+        return config.getRuntime().getInjectionManager();
     }
 
     @Override

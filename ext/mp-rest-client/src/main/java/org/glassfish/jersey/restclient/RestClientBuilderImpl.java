@@ -50,8 +50,11 @@ import org.eclipse.microprofile.rest.client.ext.AsyncInvocationInterceptor;
 import org.eclipse.microprofile.rest.client.ext.AsyncInvocationInterceptorFactory;
 import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
 import org.eclipse.microprofile.rest.client.spi.RestClientListener;
+import org.glassfish.jersey.client.ClientConfig;
 import org.glassfish.jersey.client.JerseyClient;
 import org.glassfish.jersey.client.JerseyClientBuilder;
+import org.glassfish.jersey.client.JerseyWebTarget;
+import org.glassfish.jersey.ext.cdi1x.internal.CdiUtil;
 
 /**
  * Rest client builder implementation. Creates proxy instance of requested interface.
@@ -164,15 +167,17 @@ public class RestClientBuilderImpl implements RestClientBuilder {
 
         jerseyClientBuilder.executorService(new ExecutorServiceWrapper(executorService.get(), asyncInterceptors));
 
+        JerseyClient client = jerseyClientBuilder.build();
+        client.preInitialize();
+        JerseyWebTarget webTarget = client.target(this.uri);
+
         RestClientModel restClientModel = RestClientModel.from(interfaceClass,
                                                                responseExceptionMappers,
                                                                paramConverterProviders,
-                                                               asyncInterceptors);
+                                                               asyncInterceptors,
+                                                               webTarget.getInjectionManager());
 
 
-        JerseyClient client = jerseyClientBuilder.build();
-        client.preInitialize();
-        WebTarget webTarget = client.target(this.uri);
         return (T) Proxy.newProxyInstance(interfaceClass.getClassLoader(),
                                           new Class[] {interfaceClass},
                                           new ProxyInvocationHandler(webTarget, restClientModel)

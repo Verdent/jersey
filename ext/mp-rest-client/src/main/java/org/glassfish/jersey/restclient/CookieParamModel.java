@@ -37,7 +37,8 @@ class CookieParamModel extends ParamModel<Map<String, String>> {
 
     @Override
     Map<String, String> handleParameter(Map<String, String> requestPart, Class<?> annotationClass, Object instance) {
-        requestPart.put(cookieParamName, (String) instance);
+        Object resolvedValue = interfaceModel.resolveParamValue(instance, parameter);
+        requestPart.put(cookieParamName, (String) resolvedValue);
         return requestPart;
     }
 
