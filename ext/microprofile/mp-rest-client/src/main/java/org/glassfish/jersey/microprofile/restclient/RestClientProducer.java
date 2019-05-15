@@ -32,14 +32,12 @@ import java.util.stream.Collectors;
 
 import javax.enterprise.context.Dependent;
 import javax.enterprise.context.spi.CreationalContext;
-import javax.enterprise.inject.Any;
 import javax.enterprise.inject.Default;
 import javax.enterprise.inject.spi.Bean;
 import javax.enterprise.inject.spi.BeanManager;
 import javax.enterprise.inject.spi.DeploymentException;
 import javax.enterprise.inject.spi.InjectionPoint;
 import javax.enterprise.inject.spi.PassivationCapable;
-import javax.enterprise.util.AnnotationLiteral;
 
 import org.eclipse.microprofile.config.Config;
 import org.eclipse.microprofile.config.ConfigProvider;
@@ -64,6 +62,7 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
     private static final String CONFIG_CONNECTION_TIMEOUT = "/mp-rest/connectTimeout";
     private static final String CONFIG_READ_TIMEOUT = "/mp-rest/readTimeout";
 
+    private final RestClientExtension.MpRestClientQualifier qualifier;
     private final BeanManager beanManager;
     private final Class<?> interfaceType;
     private final Class<? extends Annotation> scope;
@@ -73,11 +72,14 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
     /**
      * Creates new instance of RestClientProducer.
      *
+     * @param qualifier     qualifier which defines rest client interface
      * @param interfaceType rest client interface
      * @param beanManager   bean manager
      */
-    RestClientProducer(Class<?> interfaceType,
+    RestClientProducer(RestClientExtension.MpRestClientQualifier qualifier,
+                       Class<?> interfaceType,
                        BeanManager beanManager) {
+        this.qualifier = qualifier;
         this.interfaceType = interfaceType;
         this.beanManager = beanManager;
         this.config = ConfigProvider.getConfig();
@@ -123,8 +125,7 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
                     .ifPresent(aLong -> restClientBuilder.readTimeout(aLong, TimeUnit.MILLISECONDS));
             return restClientBuilder.build(interfaceType);
         } catch (MalformedURLException e) {
-            throw new IllegalStateException("URL is not in valid format for Rest interface " + interfaceType.getName()
-                    + ": " + baseUrl);
+            throw new IllegalStateException("URL is not in valid format: " + baseUrl);
         }
     }
 
@@ -139,9 +140,11 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
 
     @Override
     public Set<Annotation> getQualifiers() {
+        if (qualifier == null) {
+            return Collections.singleton(Default.Literal.INSTANCE);
+        }
         Set<Annotation> annotations = new HashSet<>();
-        annotations.add(new AnnotationLiteral<Default>() {});
-        annotations.add(new AnnotationLiteral<Any>() {});
+        annotations.add(qualifier);
         annotations.add(RestClient.LITERAL);
         return annotations;
     }
@@ -153,7 +156,10 @@ class RestClientProducer implements Bean<Object>, PassivationCapable {
 
     @Override
     public String getName() {
-        return interfaceType.getName() + "RestClient";
+        if (qualifier == null) {
+            return interfaceType.getName() + "RestClient";
+        }
+        return interfaceType.getName();
     }
 
     @Override

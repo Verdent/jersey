@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2019 Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2019 Payara Foundation and/or its affiliates. All rights reserved.
  *
  * This program and the accompanying materials are made available under the
  * terms of the Eclipse Public License v. 2.0, which is available at
@@ -24,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import javax.enterprise.inject.spi.BeanManager;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.ext.ParamConverterProvider;
 
@@ -36,7 +34,6 @@ import org.glassfish.jersey.internal.inject.InjectionManager;
  * Model of the rest client interface.
  *
  * @author David Kral
- * @author Patrik Dudits
  */
 class RestClientModel {
 
@@ -57,14 +54,12 @@ class RestClientModel {
                                 Set<ResponseExceptionMapper> responseExceptionMappers,
                                 Set<ParamConverterProvider> paramConverterProviders,
                                 List<AsyncInvocationInterceptor> asyncInterceptors,
-                                InjectionManager injectionManager,
-                                BeanManager beanManager) {
+                                InjectionManager injectionManager) {
         InterfaceModel interfaceModel = InterfaceModel.from(restClientClass,
                                                             responseExceptionMappers,
                                                             paramConverterProviders,
                                                             asyncInterceptors,
-                                                            injectionManager,
-                                                            beanManager);
+                                                            injectionManager);
         return new Builder()
                 .interfaceModel(interfaceModel)
                 .methodModels(parseMethodModels(interfaceModel))

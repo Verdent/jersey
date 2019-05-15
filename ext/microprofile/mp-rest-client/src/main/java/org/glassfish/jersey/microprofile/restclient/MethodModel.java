@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2019 Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2019 Payara Foundation and/or its affiliates. All rights reserved.
  *
  * This program and the accompanying materials are made available under the
  * terms of the Eclipse Public License v. 2.0, which is available at
@@ -40,6 +39,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import javax.enterprise.inject.spi.BeanManager;
+import javax.enterprise.inject.spi.CDI;
 import javax.enterprise.inject.spi.InterceptionType;
 import javax.enterprise.inject.spi.Interceptor;
 import javax.json.JsonValue;
@@ -74,7 +74,6 @@ import org.eclipse.microprofile.rest.client.ext.ResponseExceptionMapper;
  * Method model contains all information about method defined in rest client interface.
  *
  * @author David Kral
- * @author Patrik Dudits
  */
 class MethodModel {
 
@@ -128,8 +127,7 @@ class MethodModel {
                                                     interfaceModel.getResponseExceptionMappers(),
                                                     interfaceModel.getParamConverterProviders(),
                                                     interfaceModel.getAsyncInterceptors(),
-                                                    interfaceModel.getInjectionManager(),
-                                                    interfaceModel.getBeanManager());
+                                                    interfaceModel.getInjectionManager());
         } else {
             subResourceModel = null;
         }
@@ -477,31 +475,35 @@ class MethodModel {
 
         private void filterAllInterceptorAnnotations() {
             invocationInterceptors = new ArrayList<>();
-            BeanManager beanManager = interfaceModel.getBeanManager();
-            if (beanManager != null) {
-                Set<Annotation> interceptorAnnotations = new HashSet<>();
-                for (Annotation annotation : method.getAnnotations()) {
-                    if (beanManager.isInterceptorBinding(annotation.annotationType())) {
-                        interceptorAnnotations.add(annotation);
+            try {
+                if (CDI.current() != null) {
+                    Set<Annotation> interceptorAnnotations = new HashSet<>();
+                    BeanManager beanManager = CDI.current().getBeanManager();
+                    for (Annotation annotation : method.getAnnotations()) {
+                        if (beanManager.isInterceptorBinding(annotation.annotationType())) {
+                            interceptorAnnotations.add(annotation);
+                        }
+                    }
+                    interceptorAnnotations.addAll(interfaceModel.getInterceptorAnnotations());
+                    Annotation[] allInterceptorAnnotations = interceptorAnnotations.toArray(new Annotation[0]);
+                    if (allInterceptorAnnotations.length == 0) {
+                        return;
+                    }
+                    List<Interceptor<?>> interceptors = beanManager.resolveInterceptors(InterceptionType.AROUND_INVOKE,
+                                                                                        allInterceptorAnnotations);
+                    if (!interceptors.isEmpty()) {
+                        for (Interceptor<?> interceptor : interceptors) {
+                            Object interceptorInstance = beanManager.getReference(interceptor,
+                                                                                  interceptor.getBeanClass(),
+                                                                                  interfaceModel.getCreationalContext());
+                            invocationInterceptors.add(new InterceptorInvocationContext
+                                    .InvocationInterceptor(interceptorInstance,
+                                                          interceptor));
+                        }
                     }
                 }
-                interceptorAnnotations.addAll(interfaceModel.getInterceptorAnnotations());
-                Annotation[] allInterceptorAnnotations = interceptorAnnotations.toArray(new Annotation[0]);
-                if (allInterceptorAnnotations.length == 0) {
-                    return;
-                }
-                List<Interceptor<?>> interceptors = beanManager.resolveInterceptors(InterceptionType.AROUND_INVOKE,
-                                                                                    allInterceptorAnnotations);
-                if (!interceptors.isEmpty()) {
-                    for (Interceptor<?> interceptor : interceptors) {
-                        Object interceptorInstance = beanManager.getReference(interceptor,
-                                                                              interceptor.getBeanClass(),
-                                                                              interfaceModel.getCreationalContext());
-                        invocationInterceptors.add(new InterceptorInvocationContext
-                                .InvocationInterceptor(interceptorInstance,
-                                                      interceptor));
-                    }
-                }
+            } catch (IllegalStateException ignored) {
+                //CDI not present. Ignore.
             }
         }
 
